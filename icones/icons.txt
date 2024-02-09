@@ -1,0 +1,1 @@
+https://github.com/PySimpleGUI/PySimpleGUI/issues/2722
