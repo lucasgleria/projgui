@@ -10,7 +10,7 @@ layout = [
     ]
 ]
 
-sg.Window("hello!", layout, icon='transparente2.png').read(close=True)
+sg.Window("hello!", layout, icon='guanixim.jpg').read(close=True)
 
 
 # After Pyinstaller, an exe file generated and got my icon 'D:/job.ico' on taskbar. The same if I run it in file explorer or console CMD.
