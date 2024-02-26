@@ -233,7 +233,7 @@ while True:
                     pos_x = produto_selecionado[2]
                     pos_y = produto_selecionado[3]
                     pos_z = produto_selecionado[4]
-                    retirada_string = f"X{pos_x}Y{pos_y}Z{pos_z}RETIRADA" + '\n'
+                    retirada_string = f"X{pos_x}Y{pos_y}Z{pos_z}RETIRAR" + '\n'
                     ser.write(retirada_string.encode())
 
                     # Atualize a lista de produtos após a retirada

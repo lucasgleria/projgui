@@ -428,6 +428,8 @@ while True:
                                             break
 
                                         elif takeOff_event == 'Sim':
+                                            teste_sim = f"X19Z40RETIRAR" + '\n'
+                                            ser.write(teste_sim.encode())
                                             sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                                             takeOff_product_window.close()
                                             info_product_window.close()
@@ -435,6 +437,8 @@ while True:
                                             main_window.un_hide()
 
                                         elif takeOff_event == 'Não':
+                                            teste_nao = f"X19Z40RETIRARN" + '\n'
+                                            ser.write(teste_nao.encode())
                                             sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                                             takeOff_product_window.close()
                                             info_product_window.close()
@@ -503,6 +507,8 @@ while True:
                                         break
 
                                     elif takeOff_event == 'Sim':
+                                        teste_sim = f"X19Z40RETIRAR" + '\n'
+                                        ser.write(teste_sim.encode())
                                         sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                                         takeOff_product_window.close()
                                         info_product_window.close()
@@ -510,6 +516,8 @@ while True:
                                         main_window.un_hide()
 
                                     elif takeOff_event == 'Não':
+                                        teste_nao = f"X19Z40RETIRARN" + '\n'
+                                        ser.write(teste_nao.encode())
                                         sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                                         takeOff_product_window.close()
                                         info_product_window.close()
@@ -583,6 +591,8 @@ while True:
                                                     break
 
                                                 elif takeOff_event == 'Sim':
+                                                    teste_sim = f"X19Z40RETIRAR" + '\n'
+                                                    ser.write(teste_sim.encode())
                                                     sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                                                     takeOff_product_window.close()
                                                     info_product_window.close()
@@ -590,6 +600,8 @@ while True:
                                                     main_window.un_hide()
 
                                                 elif takeOff_event == 'Não':
+                                                    teste_nao = f"X19Z40RETIRARN" + '\n'
+                                                    ser.write(teste_nao.encode())
                                                     sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                                                     takeOff_product_window.close()
                                                     info_product_window.close()

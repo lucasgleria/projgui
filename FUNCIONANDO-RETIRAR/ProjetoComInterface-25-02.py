@@ -16,7 +16,6 @@ def main_layout():
     return [
         [sg.Text("Nome:"), sg.InputText(key="nome")],
         [sg.Text("Eixo X:"), sg.InputText(key="eixo_x")],
-        [sg.Text("Eixo Y:"), sg.InputText(key="eixo_y")],
         [sg.Text("Eixo Z:"), sg.InputText(key="eixo_z")],
         [sg.Text("Qntd:"), sg.InputText(key="qntd")],
         [sg.FileBrowse("Selecionar Imagem"), sg.InputText(key="imagem_path")],
@@ -83,7 +82,6 @@ cursor.execute('''
         id INTEGER PRIMARY KEY,
         nome TEXT,
         eixo_x TEXT,
-        eixo_y TEXT,
         eixo_z TEXT,
         qntd INT,
         imagem BLOB,
@@ -93,7 +91,7 @@ cursor.execute('''
 
 # Funções principais
 
-def adicionar_produto(nome, eixo_x, eixo_y, eixo_z, qntd, imagem_path):
+def adicionar_produto(nome, eixo_x, eixo_z, qntd, imagem_path):
     data_entrada = datetime.datetime.now()
     imagem_binaria = None
     
@@ -101,8 +99,8 @@ def adicionar_produto(nome, eixo_x, eixo_y, eixo_z, qntd, imagem_path):
         with open(imagem_path, "rb") as img_file:
             imagem_binaria = img_file.read()
 
-    cursor.execute('INSERT INTO produtos (nome, eixo_x, eixo_y, eixo_z, qntd, imagem, data_entrada) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (nome, eixo_x, eixo_y, eixo_z, qntd, imagem_binaria, data_entrada))
+    cursor.execute('INSERT INTO produtos (nome, eixo_x, eixo_z, qntd, imagem, data_entrada) VALUES (?, ?, ?, ?, ?, ?)',
+                (nome, eixo_x, eixo_z, qntd, imagem_binaria, data_entrada))
     conn.commit()
 
 
@@ -116,7 +114,7 @@ def exibir_produtos():
 
 def atualizar_lista_produtos(window):
     produtos = exibir_produtos()
-    window["produto_list"].update([f"{produto[1]} - Qntd: {produto[5]} - X: {produto[2]}, Y: {produto[3]}, Z: {produto[4]} - Data: {produto[7]}" for produto in produtos])
+    window["produto_list"].update([f"{produto[1]} - Qntd: {produto[4]} - X: {produto[2]}, Z: {produto[3]} - Data: {produto[6]}" for produto in produtos])
 
 
 
@@ -153,33 +151,32 @@ while True:
     elif event == 'Adicionar Produto':
         NOME = values['nome']
         EIXO_X = values['eixo_x']
-        EIXO_Y = values['eixo_y']
         EIXO_Z = values['eixo_z']
         QNTD = values['qntd']
         imagem_path = values['imagem_path']
         
         if not NOME:
             sg.popup('Campo Nome obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
-        elif not EIXO_X.isdigit() or not EIXO_Y.isdigit() or not EIXO_Z.isdigit() or not QNTD.isdigit():
-            sg.popup('Preencha os campos:\n  Eixo X,\n  Eixo Y,\n  Eixo Z,\n  Qntd.\nCom um números inteiros', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
+        elif not EIXO_X.isdigit() or not EIXO_Z.isdigit() or not QNTD.isdigit():
+            sg.popup('Preencha os campos:\n  Eixo X,\n  Eixo Z,\n  Qntd.\nCom um números inteiros', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
         # elif not imagem_path:
         #     sg.popup('Campo Imagem obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
         else:
-            adicionar_produto(NOME, int(EIXO_X), int(EIXO_Y), int(EIXO_Z), int(QNTD), imagem_path)
+            adicionar_produto(NOME, int(EIXO_X), int(EIXO_Z), int(QNTD), imagem_path)
             produtos = exibir_produtos()
-            main_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[5]} - X: {produto[2]}, Y: {produto[3]}, Z: {produto[4]} - Data: {produto[7]}" for produto in produtos])
+            main_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[4]} - X: {produto[2]}, Z: {produto[3]} - Data: {produto[6]}" for produto in produtos])
 
 
 
     elif event == 'Localizar Produto':
         filtro_nome = values["filtro_nome"]
         produtos_encontrados = localizar_produto(filtro_nome)
-        main_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[5]} - X: {produto[2]}, Y: {produto[3]}, Z: {produto[4]}" for produto in produtos_encontrados])
+        main_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[4]} - X: {produto[2]}, Z: {produto[3]}" for produto in produtos_encontrados])
 
 
     elif event == 'Exibir Produtos':
         produtos = exibir_produtos()
-        main_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[5]} - X: {produto[2]}, Y: {produto[3]}, Z: {produto[4]}" for produto in produtos])
+        main_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[4]} - X: {produto[2]}, Z: {produto[3]}" for produto in produtos])
 
     elif event == 'Arduino':
         main_window.hide()  # Oculta a janela principal
@@ -206,7 +203,7 @@ while True:
             elif arduino_event == 'Localizar Produto':
                 filtro_nome = arduino_values["filtro_nome"]  
                 produtos_encontrados = localizar_produto(filtro_nome)
-                arduino_window['produto_list'].update([f"Nome: {produto[1]} - Eixo X: {produto[2]}, Eixo Y: {produto[3]}, Eixo Z: {produto[4]}" for produto in produtos_encontrados])
+                arduino_window['produto_list'].update([f"Nome: {produto[1]} - Eixo X: {produto[2]}, Eixo Z: {produto[3]}" for produto in produtos_encontrados])
                 if len(produtos_encontrados) == 1:
                     produto_selecionado = produtos_encontrados[0]
                     filtro_realizado = True
@@ -220,20 +217,19 @@ while True:
                 if filtro_realizado:
                     filtro_nome = arduino_values["filtro_nome"]  
                     produtos_encontrados = localizar_produto(filtro_nome)
-                    arduino_window['produto_list'].update([f"Nome: {produto[1]} - Eixo X: {produto[2]}, Eixo Y: {produto[3]}, Eixo Z: {produto[4]} - Quantidade: {produto[5]} - Data de Entrada: {produto[7]} - Imagem: {produto[6]}" for produto in produtos_encontrados])
+                    arduino_window['produto_list'].update([f"Nome: {produto[1]} - Eixo X: {produto[2]}, Eixo Z: {produto[3]} - Quantidade: {produto[4]} - Data de Entrada: {produto[7]} - Imagem: {produto[6]}" for produto in produtos_encontrados])
                 else:
                     sg.popup('Realize uma pesquisa antes de visualizar as informações do produto!', title='Pesquisa Necessária', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
 
             elif arduino_event == 'Exibir Produtos':
                 produtos = exibir_produtos()
-                arduino_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[5]} - X: {produto[2]}, Y: {produto[3]}, Z: {produto[4]}" for produto in produtos])
+                arduino_window["produto_list"].update([f"{produto[1]} - Qntd: {produto[4]} - X: {produto[2]}, Z: {produto[3]}" for produto in produtos])
 
             elif arduino_event == 'Retirar Produto':
                 if filtro_realizado and produto_selecionado is not None:
                     pos_x = produto_selecionado[2]
-                    pos_y = produto_selecionado[3]
-                    pos_z = produto_selecionado[4]
-                    retirada_string = f"X{pos_x}Y{pos_y}Z{pos_z}RETIRAR" + '\n'
+                    pos_z = produto_selecionado[3]
+                    retirada_string = f"X{pos_x}Z{pos_z}RETIRAR" + '\n'
                     ser.write(retirada_string.encode())
 
                     # Atualize a lista de produtos após a retirada
@@ -247,9 +243,8 @@ while True:
             elif arduino_event == 'Guardar Produto':
                 if filtro_realizado and produto_selecionado is not None:
                     pos_x = produto_selecionado[2]
-                    pos_y = produto_selecionado[3]
-                    pos_z = produto_selecionado[4]
-                    guarda_string = f"X{pos_x}Y{pos_y}Z{pos_z}GUARDAR"+'\n'
+                    pos_z = produto_selecionado[3]
+                    guarda_string = f"X{pos_x}Z{pos_z}GUARDAR"+'\n'
                     ser.write(guarda_string.encode())
 
                 # Atualize a lista de produtos após a retirada
