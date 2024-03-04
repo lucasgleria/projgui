@@ -11,6 +11,7 @@ import serial
 import threading
 import time
 import serial.tools.list_ports
+import fitz
 
 sg.theme('lightblue7')
 # sg.set_options(font=('Courier New', 20))
@@ -25,7 +26,7 @@ imagem_path = None
 nome = None  # Initialize these variables outside the loop
 registro = None
 eixo_x = None
-nota_fiscal = None
+nota_fiscal_pdf_path = None
 eixo_z = None
 quantidade = None
 validade = None
@@ -66,11 +67,11 @@ def clear_serial_input(ser):
         ser.read(ser.in_waiting)
 
 # Função para adicionar produtos
-def adicionar_produto(nome, registro, eixo_x, nota_fiscal, eixo_z, quantidade, medida_da_quantidade, validade, image_path):
+def adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, validade, image_path):
     global has_selected_image
     data_criada = datetime.datetime.now()
-    cursor.execute('INSERT INTO produtos (nome, registro, eixo_x, nota_fiscal, eixo_z, quantidade, medida_da_quantidade, validade, imagem_path, data_criada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                   (nome, registro, eixo_x, nota_fiscal, eixo_z, quantidade, medida_da_quantidade, validade, image_path, data_criada))
+    cursor.execute('INSERT INTO produtos (nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, imagem_path, validade, data_criada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   (nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, image_path, validade, data_criada))
     conn.commit()    
     sg.popup(f"O produto {nome} foi adicionado.", title='Produto adicionado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
     has_selected_image = image_path is not None
@@ -98,19 +99,20 @@ def localizar_produto(filtro_nome):
 
 # Função para pegar as informações do produto
 def get_product_info(product_name):
-    cursor.execute('SELECT nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, imagem_path, validade FROM produtos WHERE nome = ?', (product_name,))
+    cursor.execute('SELECT nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, imagem_path, validade FROM produtos WHERE nome = ?', (product_name,))
     product_info = cursor.fetchone()
 
     if product_info:
-        nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
+        nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
 
         # Verifica se há uma imagem associada
         if image_path and os.path.exists(image_path):
-            return nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade
+            return nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade
         else:
-            return nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, None, validade
+            return nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, None, validade
     else:
         return None
+
 
 # Função para exibir em tabela
 def products_table_layout(products):
@@ -123,13 +125,96 @@ def products_table_layout(products):
                   col_widths=[20, 20, 20], key="table", enable_events=True)]
     ]
 
-
 def display_image(image_path):
     if image_path:
         pil_image = Image.open(image_path)
         pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.LANCZOS)
         tk_image = ImageTk.PhotoImage(pil_image)
         info_product_window['-PRODUCT_IMAGE-'].update(data=tk_image, visible=True)
+
+def products_info_loop():
+    nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
+    main_window.hide()
+    
+    info_product_window = sg.Window("Informações do Produto", info_product_layout(has_selected_image=(image_path is not None), image_path=image_path), finalize=True)
+
+    # Atualiza os elementos de texto na janela de informações do produto
+    info_product_window["nome"].update(nome)
+    info_product_window["registro"].update(registro)
+    info_product_window["quantidade"].update(quantidade)
+    info_product_window["medida_da_quantidade"].update(medida_da_quantidade)
+    info_product_window["eixo_x"].update(eixo_x)
+    info_product_window["eixo_z"].update(eixo_z)
+    info_product_window["validade"].update(validade)
+
+    if image_path:
+        pil_image = Image.open(image_path)
+        pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.LANCZOS)
+        tk_image = ImageTk.PhotoImage(pil_image)
+        info_product_window['-PRODUCT_IMAGE-'].update(data=tk_image, visible=True)
+    else:
+        info_product_window['-PRODUCT_IMAGE-'].update(data=None, visible=False)
+
+    while True:
+        info_event, info_values = info_product_window.read()
+
+        if info_event == sg.WINDOW_CLOSED:
+            break
+        
+        elif info_event == 'Visualizar a Nota Fiscal':
+            if nota_fiscal_pdf_path:
+                try:
+                    # Abre o PDF com o visualizador padrão do sistema
+                    os.startfile(nota_fiscal_pdf_path)
+                except Exception as e:
+                    sg.popup_error(f"Erro ao abrir o PDF: {e}", title="Erro")
+            else:
+                sg.popup("Nenhum PDF associado a este produto.", title="Informação", keep_on_top=True)
+
+        elif info_event == 'Voltar':
+            info_product_window.close()
+            products_table_window.un_hide()
+
+        elif info_event == 'Guardar Produto':
+            guardar = f'X{eixo_x}Z{eixo_z}GUARDAR' + '\n'
+            ser.write(guardar.encode())
+            sg.popup(f"O produto foi guardado.", title='Produto guardado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+            info_product_window.close()
+            products_table_window.close()
+            main_window.un_hide()
+
+        elif info_event == 'Retirar Produto':
+            info_product_window.hide()
+
+            takeOff_product_window = sg.Window("Retirada do Produto", takeOff_product_layout(), finalize=True)
+
+            while True:
+                takeOff_event, takeOff_values = takeOff_product_window.read()
+
+                if takeOff_event == sg.WINDOW_CLOSED:
+                    break
+
+                elif takeOff_event == 'Sim':
+                    teste_sim = f'X{eixo_x}Z{eixo_z}RETIRAR' + '\n'
+                    ser.write(teste_sim.encode())
+                    sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                    takeOff_product_window.close()
+                    info_product_window.close()
+                    products_table_window.close()
+                    main_window.un_hide()
+
+                elif takeOff_event == 'Não':
+                    teste_nao = f'X{eixo_x}Z{eixo_z}RETIRARN' + '\n'
+                    ser.write(teste_nao.encode())
+                    sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                    takeOff_product_window.close()
+                    info_product_window.close()
+                    products_table_window.close()
+                    main_window.un_hide()
+
+                elif info_event == "Limpar":
+                    limpar = f'X{eixo_x}Z{eixo_Z}LIMPAR' + '\n'
+                    ser.write(limpar.encode())
 
 
 def read_serial(ser):
@@ -204,30 +289,29 @@ def add_product_layout():
     return [
         [sg.Text("Nome:"), sg.InputText(key="nome", size=(40, 1), pad=(54, None))],
         [sg.Text("Registro:"), sg.InputText(key="registro", size=(40, 1), pad=(40, None))],
-        [sg.Text("N° Nota Fiscal:"), sg.InputText(key="nota_fiscal", size=(40, 1))],
         [sg.Text("Eixo X:"), sg.InputText(key="eixo_x", size=(40, 1), pad=(53, None))],
         [sg.Text("Eixo Z:"), sg.InputText(key="eixo_z", size=(40, 1), pad=(53, None))],
         [sg.Text("Validade:"), sg.InputText(key="validade", size=(40, 1), pad=(53, None))],
         [sg.Text("Quantidade:"), sg.InputText(key="quantidade", size=(20, 1), pad=(25, None)), sg.Combo(['unid' , 'mmg', 'mg', 'g', 'ml'], tooltip="choose something", key="medida_da_quantidade", size=(7, 1))],
         [sg.Button("Selecionar Imagem", key="selecionar_imagem"), sg.Button("Limpar Imagem", key="limpar_imagem")],
         [sg.Image(key='-IMAGE-', size=(300, 300), pad=(0, 0),)],
+        [sg.Text("Nota Fiscal:"), sg.Input(key="-NOTA_FISCAL_PDF-"), sg.FileBrowse(key="-BROWSE_PDF-", file_types=(("PDF Files", "*.pdf"),))],
         [sg.Button("Adicionar")],
         [sg.Button('Voltar')],
         [sg.Text("", visible=False, key="imagem_path")],
-]
+    ]
 
 def info_product_layout(has_selected_image=False, image_path=None):
     layout = [
-        [sg.Text("Nome:"), sg.Text(key="nome", size=(40, 1), pad=(54, None))],
-        [sg.Text("Registro:"), sg.Text(key="registro", size=(40, 1), pad=(40, None))],
-        [sg.Text("N° Nota Fiscal:"), sg.Text(key="nota_fiscal", size=(40, 1))],
-        [sg.Text("Validade:"), sg.Text(key="validade", size=(40, 1))],
-        [sg.Text("Quantidade:"), sg.Text(key="quantidade", size=(20, 1), pad=(25, None))], 
-        [sg.Text("Medida da Quantidade: "), sg.Text(key="medida_da_quantidade")],
-        [sg.Text("Eixo X:"), sg.Text(key="eixo_x", size=(40, 1), pad=(53, None))],
-        [sg.Text("Eixo Z:"), sg.Text(key="eixo_z", size=(40, 1), pad=(53, None))],
+        [sg.Text("Nome:"), sg.Text(nome, key="nome", size=(40, 1), pad=(54, None))],
+        [sg.Text("Registro:"), sg.Text(registro, key="registro", size=(40, 1), pad=(40, None))],
+        [sg.Text("Validade:"), sg.Text(validade, key="validade", size=(40, 1))],
+        [sg.Text("Quantidade:"), sg.Text(quantidade, key="quantidade", size=(20, 1), pad=(25, None))], 
+        [sg.Text("Medida da Quantidade: "), sg.Text(medida_da_quantidade, key="medida_da_quantidade")],
+        [sg.Text("Eixo X:"), sg.Text(eixo_x, key="eixo_x", size=(40, 1), pad=(53, None))],
+        [sg.Text("Eixo Z:"), sg.Text(eixo_z, key="eixo_z", size=(40, 1), pad=(53, None))],
         [sg.Image(key='-PRODUCT_IMAGE-', size=(300, 300), pad=(0, 0), expand_y=False, expand_x=False, visible=False)],
-        [sg.Button("Guardar Produto"), sg.Button("Retirar Produto")], [sg.Button("Limpar")],
+        [sg.Button("Visualizar a Nota Fiscal")],
         [sg.Button('Voltar')]
     ]
 
@@ -235,6 +319,7 @@ def info_product_layout(has_selected_image=False, image_path=None):
         layout[-2].insert(0, sg.Image(key='-PRODUCT_IMAGE-', visible=True))
 
     return layout
+
 
 def takeOff_product_layout():
     return [
@@ -272,7 +357,7 @@ try:
             nome TEXT,
             registro TEXT,
             eixo_x TEXT,
-            nota_fiscal TEXT,  
+            nota_fiscal_pdf_path TEXT,  
             eixo_z TEXT,
             quantidade INT,
             medida_da_quantidade TEXT,
@@ -344,7 +429,7 @@ while True:
                 nome = add_values.get("nome")
                 registro = add_values.get("registro")
                 eixo_x = add_values.get("eixo_x")
-                nota_fiscal = add_values.get("nota_fiscal")
+                nota_fiscal_pdf_path = add_values.get("-NOTA_FISCAL_PDF-")
                 eixo_z = add_values.get("eixo_z")
                 quantidade = add_values.get("quantidade")
                 medida_da_quantidade = add_values.get("medida_da_quantidade")
@@ -354,7 +439,7 @@ while True:
                     sg.popup('Campo Nome obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not registro:
                     sg.popup('Campo Registro obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
-                elif not nota_fiscal:
+                elif not nota_fiscal_pdf_path:
                     sg.popup('Campo Nota Fiscal obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not eixo_x.isdigit():
                     sg.popup('Campo Eixo X é obrigatório!\n\nPreencha com números inteiros.', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
@@ -387,11 +472,12 @@ while True:
                             add_product_window['-IMAGE-'].update(data=tk_image)
                             
                             # If everything is fine, add the product
-                            adicionar_produto(nome, registro, eixo_x, nota_fiscal, eixo_z, quantidade, medida_da_quantidade, validade, selected_image_path)
+                            adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, validade, selected_image_path)
 
                     else:
                         # If no image is selected, add the product without an image
-                        adicionar_produto(nome, registro, eixo_x, nota_fiscal, eixo_z, quantidade, medida_da_quantidade, validade, None)
+                        adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, validade, None)
+
 
 
 
@@ -427,6 +513,10 @@ while True:
                 add_product_window["imagem_path"].update(selected_image_path)
                 add_product_window['-IMAGE-'].update(data=None)
 
+            elif add_event == 'selecionar_pdf':
+                selected_nota_fiscal_pdf_path = sg.popup_get_file("Selecionar PDF", file_types=(("Arquivos PDF", "*.pdf"),))
+                add_product_window["nota_fiscal_pdf_path"].update(selected_nota_fiscal_pdf_path)
+
             elif add_event == 'Voltar':
                 add_product_window.close()
                 main_window.un_hide()
@@ -453,79 +543,7 @@ while True:
 
                         # Ensure that product_info is not None before using it
                         if product_info:
-                            nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
-                            main_window.hide()
-
-                            info_product_window = sg.Window("Informações do Produto", info_product_layout(has_selected_image=(image_path is not None), image_path=image_path), finalize=True)
-
-                            # Atualiza os elementos de texto na janela de informações do produto
-                            info_product_window["nome"].update(nome)
-                            info_product_window["nota_fiscal"].update(nota_fiscal)
-                            info_product_window["registro"].update(registro)
-                            info_product_window["quantidade"].update(quantidade)
-                            info_product_window["medida_da_quantidade"].update(medida_da_quantidade)
-                            info_product_window["eixo_x"].update(eixo_x)
-                            info_product_window["eixo_z"].update(eixo_z)
-                            info_product_window["validade"].update(validade)
-
-                            if image_path:
-                                pil_image = Image.open(image_path)
-                                pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.LANCZOS)
-                                tk_image = ImageTk.PhotoImage(pil_image)
-                                info_product_window['-PRODUCT_IMAGE-'].update(data=tk_image, visible=True)
-                            else:
-                                info_product_window['-PRODUCT_IMAGE-'].update(data=None, visible=False)
-
-                            while True:
-                                info_event, info_values = info_product_window.read()
-
-                                if info_event == sg.WINDOW_CLOSED:
-                                    break
-
-                                elif info_event == 'Voltar':
-                                    info_product_window.close()
-                                    products_table_window.un_hide()
-
-                                elif info_event == 'Guardar Produto':
-                                    guardar = f'X{eixo_x}Z{eixo_z}GUARDAR' + '\n'
-                                    ser.write(guardar.encode())
-                                    sg.popup(f"O produto foi guardado.", title='Produto guardado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                    info_product_window.close()
-                                    products_table_window.close()
-                                    main_window.un_hide()
-                                
-                                elif info_event == 'Retirar Produto':
-                                    info_product_window.hide()
-
-                                    takeOff_product_window = sg.Window("Retirada do Produto", takeOff_product_layout(), finalize=True)
-
-                                    while True:
-                                        takeOff_event, takeOff_values = takeOff_product_window.read()
-
-                                        if takeOff_event == sg.WINDOW_CLOSED:
-                                            break
-
-                                        elif takeOff_event == 'Sim':
-                                            teste_sim = f'X{eixo_x}Z{eixo_z}RETIRAR' + '\n'
-                                            ser.write(teste_sim.encode())
-                                            sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                            takeOff_product_window.close()
-                                            info_product_window.close()
-                                            products_table_window.close()
-                                            main_window.un_hide()
-
-                                        elif takeOff_event == 'Não':
-                                            teste_nao = f'X{eixo_x}Z{eixo_z}RETIRARN' + '\n'
-                                            ser.write(teste_nao.encode())
-                                            sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                            takeOff_product_window.close()
-                                            info_product_window.close()
-                                            products_table_window.close()
-                                            main_window.un_hide()
-
-                                elif info_event == "Limpar":
-                                    limpar = f'X{eixo_x}Z{eixo_z}LIMPAR' + '\n'
-                                    ser.write(limpar.encode())
+                            products_info_loop()
 
                     
         else:
@@ -546,81 +564,7 @@ while True:
 
                     # Ensure that product_info is not None before using it
                     if product_info:
-                        nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
-                        main_window.hide()
-
-                        info_product_window = sg.Window("Informações do Produto", info_product_layout(has_selected_image=(image_path is not None), image_path=image_path), finalize=True)
-
-                        # Atualiza os elementos de texto na janela de informações do produto
-                        info_product_window["nome"].update(nome)
-                        info_product_window["nota_fiscal"].update(nota_fiscal)
-                        info_product_window["registro"].update(registro)
-                        info_product_window["quantidade"].update(quantidade)
-                        info_product_window["medida_da_quantidade"].update(medida_da_quantidade)
-                        info_product_window["eixo_x"].update(eixo_x)
-                        info_product_window["eixo_z"].update(eixo_z)
-                        info_product_window["vallidade"].update(validade)
-
-                        if image_path:
-                            pil_image = Image.open(image_path)
-                            pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.LANCZOS)
-                            tk_image = ImageTk.PhotoImage(pil_image)
-                            info_product_window['-PRODUCT_IMAGE-'].update(data=tk_image, visible=True)
-                        else:
-                            info_product_window['-PRODUCT_IMAGE-'].update(data=None, visible=False)
-
-                        while True:
-                            info_event, info_values = info_product_window.read()
-
-                            if info_event == sg.WINDOW_CLOSED:
-                                break
-
-                            elif info_event == 'Voltar':
-                                info_product_window.close()
-                                products_table_window.un_hide()
-
-                            elif info_event == 'Guardar Produto':
-                                guardar = f'X{eixo_x}Z{eixo_z}GUARDAR' + '\n'
-                                ser.write(guardar.encode())
-                                sg.popup(f"O produto foi guardado.", title='Produto guardado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                info_product_window.close()
-                                products_table_window.close()
-                                main_window.un_hide()
-                                
-                            elif info_event == 'Retirar Produto':
-                                info_product_window.hide()
-
-                                takeOff_product_window = sg.Window("Retirada do Produto", takeOff_product_layout(), finalize=True)
-
-                                while True:
-                                    takeOff_event, takeOff_values = takeOff_product_window.read()
-
-                                    if takeOff_event == sg.WINDOW_CLOSED:
-                                        break
-
-                                    elif takeOff_event == 'Sim':
-                                        teste_sim = f'X{eixo_x}Z{eixo_z}RETIRAR' + '\n'
-                                        ser.write(teste_sim.encode())
-                                        sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                        takeOff_product_window.close()
-                                        info_product_window.close()
-                                        products_table_window.close()
-                                        main_window.un_hide()
-
-                                    elif takeOff_event == 'Não':
-                                        teste_nao = f'X{eixo_x}Z{eixo_z}RETIRARN' + '\n'
-                                        ser.write(teste_nao.encode())
-                                        sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                        takeOff_product_window.close()
-                                        info_product_window.close()
-                                        products_table_window.close()
-                                        main_window.un_hide()
-
-                            elif info_event == "Limpar":
-                                    limpar = f'X{eixo_x}Z{eixo_Z}LIMPAR' + '\n'
-                                    ser.write(limpar.encode())
-
-                            
+                        products_info_loop()
 
                 else:
                     products_table_window = sg.Window("Listagem de Produtos", products_table_layout(produtos), finalize=True)
@@ -640,89 +584,14 @@ while True:
 
                                 # Ensure that product_info is not None before using it
                                 if product_info:
-                                    nome, nota_fiscal, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
-                                    main_window.hide()
+                                    products_info_loop()
 
-                                    info_product_window = sg.Window("Informações do Produto", info_product_layout(has_selected_image=(image_path is not None), image_path=image_path), finalize=True)
-
-                                    # Atualiza os elementos de texto na janela de informações do produto
-                                    info_product_window["nome"].update(nome)
-                                    info_product_window["nota_fiscal"].update(nota_fiscal)
-                                    info_product_window["registro"].update(registro)
-                                    info_product_window["quantidade"].update(quantidade)
-                                    info_product_window["medida_da_quantidade"].update(medida_da_quantidade)
-                                    info_product_window["eixo_x"].update(eixo_x)
-                                    info_product_window["eixo_z"].update(eixo_z)
-                                    info_product_window["validade"].update(validade)
-
-                                    if image_path:
-                                        pil_image = Image.open(image_path)
-                                        pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.LANCZOS)
-                                        tk_image = ImageTk.PhotoImage(pil_image)
-                                        info_product_window['-PRODUCT_IMAGE-'].update(data=tk_image, visible=True)
-                                    else:
-                                        info_product_window['-PRODUCT_IMAGE-'].update(data=None, visible=False)
-
-                                    while True:
-                                        info_event, info_values = info_product_window.read()
-
-                                        if info_event == sg.WINDOW_CLOSED:
-                                            break
-
-                                        elif info_event == 'Voltar':
-                                            info_product_window.close()
-                                            products_table_window.un_hide()
-
-                                        elif info_event == 'Guardar Produto':
-                                            guardar = f'X{eixo_x}Z{eixo_z}GUARDAR' + '\n'
-                                            ser.write(guardar.encode())
-                                            sg.popup(f"O produto foi guardado.", title='Produto guardado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                            info_product_window.close()
-                                            products_table_window.close()
-                                            main_window.un_hide()
-
-                                        elif info_event == 'Retirar Produto':
-                                            info_product_window.hide()
-
-                                            takeOff_product_window = sg.Window("Retirada do Produto", takeOff_product_layout(), finalize=True)
-
-                                            while True:
-                                                takeOff_event, takeOff_values = takeOff_product_window.read()
-
-                                                if takeOff_event == sg.WINDOW_CLOSED:
-                                                    break
-
-                                                elif takeOff_event == 'Sim':
-                                                    teste_sim = f'X{eixo_x}Z{eixo_z}RETIRAR' + '\n'
-                                                    ser.write(teste_sim.encode())
-                                                    sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                                    takeOff_product_window.close()
-                                                    info_product_window.close()
-                                                    products_table_window.close()
-                                                    main_window.un_hide()
-
-                                                elif takeOff_event == 'Não':
-                                                    teste_nao = f'X{eixo_x}Z{eixo_z}RETIRARN' + '\n'
-                                                    ser.write(teste_nao.encode())
-                                                    sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                                                    takeOff_product_window.close()
-                                                    info_product_window.close()
-                                                    products_table_window.close()
-                                                    main_window.un_hide()
-
-                                        elif info_event == "Limpar":
-                                            limpar = f'X{eixo_x}Z{eixo_Z}LIMPAR' + '\n'
-                                            ser.write(limpar.encode())
-
-                                        
 
             else:
                 sg.popup('Nenhum produto encontrado para o filtro fornecido.', title='Produtos não encontrados', non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
 
-
 if main_window:
     main_window.close()
-
 
 if conn:
     conn.close()
