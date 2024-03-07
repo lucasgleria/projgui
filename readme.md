@@ -33,6 +33,6 @@
 ### Vá no Ícone de extensões da barra lateral esquerda e instale todas as extensões citadas acima
 ![Imagem](pasta-imagens-readme/extensoes.png)
 #
-## 7. Rodar no terminal: "pip install pyserial PySimpleGUI sqlite3 PyPDF2 PdfReader pillow shutil uuid pymupdf pdf2image easyocr opencv-python opencv-python-headless cv2 tensorflow pytesseract threading fitz" (retire as aspas)
+## 7. Rodar no terminal: "pip install pyserial PySimpleGUI sqlite3 PyPDF2 PdfReader pillow shutil uuid pymupdf pdf2image easyocr opencv-python opencv-python-headless cv2 tensorflow pytesseract threading fitz qimage2ndarray" (retire as aspas)
 ### Rode o comando no terminal
 ![Imagem](pasta-imagens-readme/comando-pip.png)

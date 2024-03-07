@@ -28,10 +28,82 @@ palavras_chave = [
     "fluconazol", "mirtazapina", "ciclobenzaprina", "naproxeno", "hidroclorotiazida", "doramectina",
     "ivermectina", "nitazoxanida", "teofilina", "atenolol", "propranolol", "indapamida", "candesartana",
     "hidroclorotiazida", "valsartana", "bisoprolol", "losartana", "flunarizina", "fenofibrato", "pitavastatina",
-    "bezafibrato", "atorvastatina", "tibolona", "desogestrel", "levonorgestrel", "etinilestradiol", "drospirenona",
-    "clormadinona", "acetato", "dienogest", "ulipristal", "anticoncepcional", "noretisterona", "ciproterona",
-    "estriol", "estradiol", "tibolona", "esteroides", "conjugados", "progesterona", "testosterona", "decanoato",
-    "vitamina", "suplemento"
+    "bezafibrato", "atorvastatina", "tibolona", "desogestrel", "levonorgestrel", "gestodeno", "drospirenona",
+    "etinilestradiol", "clormadinona", "medroxiprogesterona", "progesterona", "zolpidem", "buspirona",
+    "zopiclona", "clonazepam", "risperidona", "quetiapina", "aripiprazol", "olanzapina", "trazodona",
+    "venlafaxina", "mirtazapina", "fluoxetina", "paroxetina", "citalopram", "sertralina", "amitriptilina",
+    "nortriptilina", "desvenlafaxina", "bupropiona", "duloxetina", "milnaciprano", "bromazepam", "lorazepam",
+    "clorazepato", "alprazolam", "oxazepam", "temazepam", "diazepam", "gabapentina", "pregabalina",
+    "ciclobenzaprina", "carisoprodol", "tizanidina", "diclofenaco", "ibuprofeno", "naproxeno",
+    "celecoxibe", "etoricoxibe", "meloxicam", "codeína", "fentanila", "morfina", "oxicodona",
+    "tramadol", "gabapentina", "pregabalina", "clonidina", "nortriptilina", "amitriptilina",
+    "duloxetina", "venlafaxina", "oxcarbazepina", "carbamazepina", "fenitoína", "lamotrigina",
+    "levetiracetam", "valproato", "topiramato", "primidona", "baclofeno", "tizanidina", "ciclobenzaprina",
+    "ondansetrona", "prometazina", "dexametasona", "prednisona", "hidrocortisona", "betametasona",
+    "cetoconazol", "terbinafina", "fluconazol", "clotrimazol", "miconazol", "acitretina", "adapaleno",
+    "isotretinoína", "tretinoína", "bimatoprosta", "doramectina", "ivermectina", "spironolactona",
+    "furosemida", "hidroclorotiazida", "clortalidona", "espironolactona", "indapamida", "bumetanida",
+    "olmesartana", "losartana", "valsartana", "ramipril", "captopril", "enalapril", "benazepril",
+    "lisinopril", "perindopril", "irbesartana", "labetalol", "clonidina", "hidralazina", "minoxidil",
+    "nifedipina", "amlodipina", "felodipina", "nitrendipina", "lercanidipina", "diltiazem",
+    "verapamil", "atenolol", "propranolol", "metoprolol", "bisoprolol", "carvedilol", "nebivolol",
+    "digoxina", "amiodarona", "dronedarona", "sinvastatina", "atorvastatina", "rosuvastatina",
+    "pravastatina", "fluvastatina", "pitavastatina", "ezetimiba", "fenofibrato", "fibrato",
+    "fenofibrato", "gemfibrozil", "colesevelam", "bromocriptina", "cabergolina", "parlodel",
+    "dostinex", "bromoprida", "metoclopramida", "domperidona", "ondansetrona", "granisetrona",
+    "metilprednisolona", "prednisona", "hidrocortisona", "dexametasona", "betametasona", "fludrocortisona",
+    "estradiol", "estrógeno", "progestágeno", "progesterona", "testosterona", "andrógeno",
+    "estrogênio", "trieste", "estradiol", "valerato", "etinilestradiol", "medroxiprogesterona",
+    "acetato", "nomegestrol", "gestodeno", "desogestrel", "levonorgestrel", "drospirenona",
+    "noretisterona", "norelgestromina", "linestrenol", "etilestradiol", "cloprostenol", "mesilato",
+    "cetoconazol", "tioconazol", "sulfato", "zolpidem", "cetoconazol", "tioconazol", "sulfato",
+    "zolpidem", "zopiclona", "midazolam", "propofol", "dexmedetomidina", "lorazepam", "clonazepam",
+    "alfentanila", "fentanila", "sufentanila", "remifentanila", "tramadol", "petidina", "meperidina",
+    "bupivacaína", "lidocaína", "ropivacaína", "benzocaína", "tetracaína", "dibucaina", "prilocaína",
+    "procaína", "adrenalina", "noradrenalina", "fenilefrina", "metoxamina", "dobutamina",
+    "isoproterenol", "dopamina", "nitroglicerina", "nitroprussiato", "milrinona", "nesiritida",
+    "hidralazina", "furosemida", "bumetanida", "espironolactona", "trometamol", "tris", "acetato",
+    "borato", "carbonato", "cloridrato", "citrat", "fosfato", "gluconato", "hidrogenocarbonato",
+    "lactato", "maleato", "orotato", "sulfato", "valerato", "veículo", "água", "óleo", "sorbitol",
+    "propilenoglicol", "polietilenoglicol", "álcool", "glicerina", "creme", "unguento", "loção",
+    "pomada", "solução", "colutório", "clorpromazina", "haloperidol", "perfenazina", "clozapina", "olanzapina", "aripiprazol",
+    "ziprasidona", "quetiapina", "risperidona", "paliperidona", "lurasidona", "asenapina",
+    "sulpirida", "levomepromazina", "trifluoperazina", "benzatropina", "biperideno", "trihexifenidilo",
+    "quetamina", "memantina", "donepezila", "rivastigmina", "galantamina", "escopolamina", 
+    "cinarizina", "betahistina", "flunarizina", "dimenidrinato", "metoclopramida", "ondansetrona",
+    "droperidol", "difenidramina", "prometazina", "meclizina", "metilfenidato", "atomoxetina",
+    "lisdexanfetamina", "modafinila", "dextroanfetamina", "mazindol", "sibutramina", "orlistat",
+    "liraglutida", "exenatida", "sitagliptina", "vildagliptina", "saxagliptina", "linagliptina",
+    "pioglitazona", "rosiglitazona", "acarbose", "miglitol", "tolbutamida", "glibenclamida",
+    "glimepirida", "repaglinida", "nateglinida", "dapagliflozina", "empagliflozina", "canagliflozina",
+    "insulina glargina", "insulina detemir", "insulina degludeca", "insulina lispro", "insulina aspart",
+    "insulina glulisina", "insulina regular", "insulina NPH", "insulina Lente", "insulina Ultra Lente",
+    "oxandrolona", "metiltestosterona", "testosterona em gel", "testosterona injetável", "estanozolol",
+    "nandrolona", "boldenona", "primobolan", "trembolona", "hormônio do crescimento", "follitropina",
+    "menotropina", "gonadotrofina coriônica", "clomifeno", "letrozol", "anastrozol", "tamoxifeno",
+    "raloxifeno", "fulvestranto", "bicalutamida", "flutamida", "leuprorrelina", "goserrelina",
+    "triptorrelina", "alendronato", "risedronato", "ibandronato", "zoledronato", "denosumabe",
+    "teriparatida", "calcitonina", "vitamina D3", "colecalciferol", "calcitriol", "alfacalcidol",
+    "carbonato de cálcio", "citrato de cálcio", "carbonato de magnésio", "sulfato de magnésio",
+    "fosfato de potássio", "cloreto de potássio", "bicarbonato de potássio", "acetato de zinco",
+    "sulfato de zinco", "óxido de zinco", "sulfato de cobre", "óxido de ferro", "sulfato de ferro",
+    "gluconato de ferro", "carbonato de ferro", "sulfato de manganês", "óxido de manganês",
+    "cloreto de cromo", "óxido de cromo", "iodeto de potássio", "iodeto de sódio", "iodeto de ferro",
+    "cloreto de flúor", "fluoreto de sódio", "fluoreto de estanho", "benzidamina", "cloridrato de benzidamina",
+    "maleato de dimetindeno", "cloreto de cetilpiridínio", "dicloridrato de cetirizina", "desloratadina",
+    "fexofenadina", "cloridrato de pseudoefedrina", "bromidrato de fenoterol", "brometo de ipratrópio",
+    "sulfato de salbutamol", "cloridrato de fenilefrina", "oximetazolina", "cloreto de sódio",
+    "hidróxido de sódio", "borato de sódio", "borato de alumínio", "carbonato de cálcio",
+    "ácido ascórbico", "vitamina C", "cianocobalamina", "vitamina B12", "colecalciferol", "vitamina D",
+    "tiamina", "vitamina B1", "riboflavina", "vitamina B2", "piridoxina", "vitamina B6", "ácido fólico",
+    "ácido pantotênico", "biotina", "nicotinamida", "vitamina B3", "vitamina E", "tocoferol",
+    "acetato de tocoferol", "sulfato ferroso", "gluconato ferroso", "fumarato ferroso",
+    "pantenol", "cloridrato de piridoxina", "betacaroteno", "polivitamínico", "multivitamínico",
+    "fosfato de clindamicina", "fosfato de neomicina", "bacitracina", "gentamicina", "sulfato de polimixina B",
+    "sulfadiazina de prata", "mupirocina", "ácido fusídico", "peróxido de benzoíla", "adapaleno",
+    "tretinoína", "isotretinoína", "ácido azelaico", "ácido salicílico", "ácido glicólico",
+    "hidroquinona", "melanina", "polidocanol", "dexpantenol", "óxido de zinco", "cetoconazol",
+    "miconazol", "terbinafina", "butenafina", "sulfeto de selênio", "clotrimazol", "fluconazol"
 ]
 
 # Variável global para armazenar o último imagem_id selecionado
@@ -149,6 +221,32 @@ def extrair_texto_imagem(window_adicionar, conn):
         nome_medicamento = encontrar_nome_medicamento(texto)
         quantidade, medida = encontrar_quantidade_e_medida(texto)
 
+        # Se alguma informação não foi encontrada, chama a segunda função
+        if quantidade == "Quantidade não encontrada." or medida == "Medida não encontrada.":
+            extrair_texto_imagem_2(window_adicionar, conn)
+        else:
+            # Exibir as informações extraídas
+            sg.popup("Informações Extraídas:",
+                     "Nome do Medicamento: " + nome_medicamento,
+                     "Quantidade: " + quantidade,
+                     "Medida: " + medida)
+
+            # Preencher os inputs da segunda janela com as informações extraídas
+            window_adicionar['-NOME-'].update(nome_medicamento)
+            window_adicionar['-QUANTIDADE-'].update(quantidade)
+            window_adicionar['-MEDIDA-'].update(medida)
+
+def extrair_texto_imagem_2(window_adicionar, conn):
+    global ultima_imagem_id
+    path = obter_imagem(conn, ultima_imagem_id)
+    if path:
+        image = Image.open(path)
+        texto = pytesseract.image_to_string(image)
+
+        # Extrair nome do medicamento, quantidade e medida
+        nome_medicamento = encontrar_nome_medicamento(texto)
+        quantidade, medida = encontrar_quantidade_e_medida(texto)
+
         # Exibir as informações extraídas
         sg.popup("Informações Extraídas:",
                  "Nome do Medicamento: " + nome_medicamento,
@@ -231,9 +329,21 @@ while True:
                 [sg.Button('Adicionar')]
             ]
             window_adicionar = sg.Window("Adicionar Produto", layout_adicionar, finalize=True)
-            
-            # Extrair e preencher as informações na segunda janela
-            extrair_texto_imagem(window_adicionar, conn)
+
+            # Tentativa de extrair e preencher as informações na segunda janela
+            tentativa_1 = extrair_texto_imagem(window_adicionar, conn)
+            if "não encontrado" in tentativa_1[0] or "não encontrado" in tentativa_1[1]:
+                tentativa_2 = extrair_texto_imagem_2(window_adicionar, conn)
+                if "não encontrado" in tentativa_2[0] or "não encontrado" in tentativa_2[1]:
+                    # Preencher com "Quantidade não encontrada" e "Medida não encontrada"
+                    window_adicionar['-QUANTIDADE-'].update('Quantidade não encontrada')
+                    window_adicionar['-MEDIDA-'].update('Medida não encontrada')
+                else:
+                    window_adicionar['-QUANTIDADE-'].update(tentativa_2[0])
+                    window_adicionar['-MEDIDA-'].update(tentativa_2[1])
+            else:
+                window_adicionar['-QUANTIDADE-'].update(tentativa_1[0])
+                window_adicionar['-MEDIDA-'].update(tentativa_1[1])
 
             # Loop da segunda janela de adicionar produto
             while True:
