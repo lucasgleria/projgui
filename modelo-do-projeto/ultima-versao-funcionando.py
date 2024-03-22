@@ -1,9 +1,6 @@
-import PySimpleGUIQt as sg
-import qimage2ndarray as qnd
-from PyQt5.QtGui import QPixmap
+import PySimpleGUI as sg
 import sqlite3
 import datetime
-import io
 from PIL import Image, ImageTk
 from io import BytesIO
 import os
@@ -19,24 +16,18 @@ import webbrowser
 import urllib.parse
 import urllib.request
 
-if sys.platform.startswith('win'):
-    import ctypes
-    # Make sure Pyinstaller icons are still grouped
-    if sys.argv[0].endswith('.exe') == False:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'CompanyName.ProductName.SubProduct.VersionInformation') # Arbitrary string
 
 sg.theme('lightblue7')
 # sg.set_options(font=('Courier New', 20))
 
-# ícone
-icone_path = r'icones/IF.png'
 
 # Lock para garantir acesso seguro às variáveis globais
 data_lock = threading.Lock()
 
+
 # ...
 imagem_path = None
-nome = None  # Initialize these variables outside the loop
+nome = None
 registro = None
 eixo_x = None
 nota_fiscal_pdf_path = None
@@ -49,7 +40,6 @@ has_selected_image = False
 Temperatura = None
 Umidade = None
 main_window = None
-tk_image = None 
 
 # ...
 
@@ -67,30 +57,40 @@ def connect_to_arduino(porta_COM, taxa_band):
         return ser
 
     except ValueError as ve:
-        sg.popup(ve, title='Erro de Conexão', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+        sg.popup(ve, title='Erro de Conexão', non_blocking=True, font=(
+            'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
         return None
 
 # Funções globais
+
+
 def reset_config_values(window):
     window['porta_COM'].update('')
     window['taxa_band'].update('')
 
 # Função para limpar a entrada serial
+
+
 def clear_serial_input(ser):
     while ser.in_waiting:
         ser.read(ser.in_waiting)
 
 # Função para adicionar produtos
+
+
 def adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, validade, image_path):
     global has_selected_image
     data_criada = datetime.datetime.now()
     cursor.execute('INSERT INTO produtos (nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, imagem_path, validade, data_criada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                    (nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, image_path, validade, data_criada))
-    conn.commit()    
-    sg.popup(f"O produto {nome} foi adicionado.", title='Produto adicionado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, icon=icone_path)
+    conn.commit()
+    sg.popup(f"O produto {nome} foi adicionado.", title='Produto adicionado',
+             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
     has_selected_image = image_path is not None
 
 # Função para converter a imagem em dados binários
+
+
 def get_image_data(image_path):
     if os.path.exists(image_path) and os.path.isfile(image_path):
         with open(image_path, 'rb') as image_file:
@@ -99,18 +99,25 @@ def get_image_data(image_path):
     return None
 
 # Função para exibir produtos
+
+
 def exibir_produtos_existentes():
     cursor.execute('SELECT nome, registro, validade FROM produtos')
     produtos = cursor.fetchall()
     return produtos
-    
+
 # Função para localizar produtos
+
+
 def localizar_produto(filtro_nome):
-    cursor.execute('SELECT nome, registro FROM produtos WHERE nome LIKE ?', ('%' + filtro_nome + '%',))
+    cursor.execute(
+        'SELECT nome, registro FROM produtos WHERE nome LIKE ?', ('%' + filtro_nome + '%',))
     produtos = cursor.fetchall()
     return produtos
 
 # Função para pegar as informações do produto
+
+
 def get_product_info(product_name):
     cursor.execute('SELECT nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, imagem_path, validade FROM produtos WHERE nome = ?', (product_name,))
     product_info = cursor.fetchone()
@@ -127,9 +134,12 @@ def get_product_info(product_name):
         return None
 
 # Função para exibir em tabela
+
+
 def products_table_layout(products):
     header = ["Nome", "Registro", "Validade"]
-    data = [[product[0], product[1], get_product_info(product[0])[-1]] for product in products]
+    data = [[product[0], product[1], get_product_info(
+        product[0])[-1]] for product in products]
 
     return [
         [sg.Table(values=data, headings=header, auto_size_columns=False, justification='left',
@@ -137,20 +147,23 @@ def products_table_layout(products):
                   col_widths=[20, 20, 20], key="table", enable_events=True)]
     ]
 
+
 def display_image(image_path):
     if image_path:
-        pixmap = QPixmap(image_path)
-        image_elem = info_product_window['-PRODUCT_IMAGE-']
-        image_elem.setPixmap(pixmap.scaled(300, 300, aspectRatioMode=Qt.KeepAspectRatio))
-        image_elem.setVisible(True)
-    else:
-        info_product_window['-PRODUCT_IMAGE-'].setVisible(False)
+        pil_image = Image.open(image_path)
+        pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(
+            Image, 'ANTIALIAS') else Image.LANCZOS)
+        tk_image = ImageTk.PhotoImage(pil_image)
+        info_product_window['-PRODUCT_IMAGE-'].update(
+            data=tk_image, visible=True)
+
 
 def products_info_loop():
     nome, nota_fiscal_pdf_path, registro, quantidade, medida_da_quantidade, eixo_x, eixo_z, image_path, validade = product_info
     main_window.hide()
-    
-    info_product_window = sg.Window("Informações do Produto", info_product_layout(has_selected_image=(image_path is not None), image_path=image_path), finalize=True, icon=icone_path)
+
+    info_product_window = sg.Window("Informações do Produto", info_product_layout(
+        has_selected_image=(image_path is not None), image_path=image_path), finalize=True)
 
     # Atualiza os elementos de texto na janela de informações do produto
     info_product_window["nome"].update(nome)
@@ -161,19 +174,28 @@ def products_info_loop():
     info_product_window["eixo_z"].update(eixo_z)
     info_product_window["validade"].update(validade)
 
-    display_image(image_path)  # Chamada para exibir a imagem
+    if image_path:
+        pil_image = Image.open(image_path)
+        pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(
+            Image, 'ANTIALIAS') else Image.LANCZOS)
+        tk_image = ImageTk.PhotoImage(pil_image)
+        info_product_window['-PRODUCT_IMAGE-'].update(
+            data=tk_image, visible=True)
+    else:
+        info_product_window['-PRODUCT_IMAGE-'].update(data=None, visible=False)
 
     while True:
         info_event, info_values = info_product_window.read()
 
         if info_event == sg.WINDOW_CLOSED:
             break
-        
+
         elif info_event == 'Visualizar a Nota Fiscal':
             if nota_fiscal_pdf_path:
                 view_pdf_window(nota_fiscal_pdf_path)
             else:
-                sg.popup("Nenhum PDF associado a este produto.", title="Informação", keep_on_top=True, icon=icone_path)
+                sg.popup("Nenhum PDF associado a este produto.",
+                         title="Informação", keep_on_top=True)
 
         elif info_event == 'Voltar':
             info_product_window.close()
@@ -182,7 +204,8 @@ def products_info_loop():
         elif info_event == 'Guardar Produto':
             guardar = f'X{eixo_x}Z{eixo_z}GUARDAR' + '\n'
             ser.write(guardar.encode())
-            sg.popup(f"O produto foi guardado.", title='Produto guardado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, icon=icone_path)
+            sg.popup(f"O produto foi guardado.", title='Produto guardado',
+                     non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
             info_product_window.close()
             products_table_window.close()
             main_window.un_hide()
@@ -190,7 +213,8 @@ def products_info_loop():
         elif info_event == 'Retirar Produto':
             info_product_window.hide()
 
-            takeOff_product_window = sg.Window("Retirada do Produto", takeOff_product_layout(), finalize=True, icon=icone_path)
+            takeOff_product_window = sg.Window(
+                "Retirada do Produto", takeOff_product_layout(), finalize=True)
 
             while True:
                 takeOff_event, takeOff_values = takeOff_product_window.read()
@@ -201,7 +225,8 @@ def products_info_loop():
                 elif takeOff_event == 'Sim':
                     teste_sim = f'X{eixo_x}Z{eixo_z}RETIRAR' + '\n'
                     ser.write(teste_sim.encode())
-                    sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, icon=icone_path)
+                    sg.popup(f"O produto foi retirado.", title='Produto retirado',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                     takeOff_product_window.close()
                     info_product_window.close()
                     products_table_window.close()
@@ -210,7 +235,8 @@ def products_info_loop():
                 elif takeOff_event == 'Não':
                     teste_nao = f'X{eixo_x}Z{eixo_z}RETIRARN' + '\n'
                     ser.write(teste_nao.encode())
-                    sg.popup(f"O produto foi retirado.", title='Produto retirado', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, icon=icone_path)
+                    sg.popup(f"O produto foi retirado.", title='Produto retirado',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                     takeOff_product_window.close()
                     info_product_window.close()
                     products_table_window.close()
@@ -219,6 +245,7 @@ def products_info_loop():
                 elif info_event == "Limpar":
                     limpar = f'X{eixo_x}Z{eixo_Z}LIMPAR' + '\n'
                     ser.write(limpar.encode())
+
 
 def read_serial(ser):
     global Temperatura, Umidade
@@ -233,13 +260,15 @@ def read_serial(ser):
                 buffer += data
                 values = buffer.split('\n')
                 if len(values) >= 2 and values[0] and values[1]:
-                    values = [str(value) for value in values if value]  # Filtra valores vazios
+                    # Filtra valores vazios
+                    values = [str(value) for value in values if value]
 
                     with data_lock:
                         Temperatura = values[0]
                         Umidade = float(values[1])
 
-                    update_gui_window(Temperatura, Umidade)  # Atualiza a interface gráfica com os novos valores
+                    # Atualiza a interface gráfica com os novos valores
+                    update_gui_window(Temperatura, Umidade)
                     buffer = ''  # Limpa o buffer após processar os dados
 
             # Verifica se passou 5 segundos
@@ -251,6 +280,8 @@ def read_serial(ser):
             print(f"Erro na leitura serial: {e}")
 
 # Função para atualizar a interface gráfica
+
+
 def update_gui_window(temperatura, umidade):
     global main_window  # Adicionando global window
     main_window['-TEMPERATURA-'].update(f'Temperatura: {temperatura}°C')
@@ -258,6 +289,8 @@ def update_gui_window(temperatura, umidade):
     main_window.Refresh()  # Atualiza a janela
 
 # Thread para leitura serial
+
+
 def serial_thread(ser):
     while True:
         time.sleep(1)
@@ -290,6 +323,7 @@ def display_page(image_elem, pdf_document, page_num, window_size):
 
     return page_num + 1  # Retorna o número da página atualizado
 
+
 def view_pdf_window(nota_fiscal_pdf_path):
     pdf_document = fitz.open(nota_fiscal_pdf_path)
     num_pages = pdf_document.page_count
@@ -297,17 +331,21 @@ def view_pdf_window(nota_fiscal_pdf_path):
     window_size = (1000, 850)
     layout = [
         [sg.Text(f'Página 1 de {num_pages}', key='-PAGE_COUNTER-')],
-        [sg.Button('Anterior'), sg.Button('Próxima'), sg.Button('Abrir no Navegador'), sg.Button('Fechar')],
+        [sg.Button('Anterior'), sg.Button('Próxima'), sg.Button(
+            'Abrir no Navegador'), sg.Button('Fechar')],
         [sg.Image(key='-IMAGE-')]
     ]
 
-    window = sg.Window('Visualizar PDF', layout, finalize=True, size=window_size, icon=icone_path)
+    window = sg.Window('Visualizar PDF', layout,
+                       finalize=True, size=window_size)
     image_elem = window['-IMAGE-']
     page_num = 0
 
     while True:
-        display_page_num = display_page(image_elem, pdf_document, page_num, window_size)
-        window['-PAGE_COUNTER-'].update(f'Página {display_page_num} de {num_pages}')
+        display_page_num = display_page(
+            image_elem, pdf_document, page_num, window_size)
+        window['-PAGE_COUNTER-'].update(
+            f'Página {display_page_num} de {num_pages}')
 
         event, _ = window.read()
 
@@ -324,9 +362,9 @@ def view_pdf_window(nota_fiscal_pdf_path):
     window.close()
 
 
-
 def get_pdf_path():
-    cursor.execute('SELECT nota_fiscal_pdf_path FROM pdfs ORDER BY id DESC LIMIT 1')
+    cursor.execute(
+        'SELECT nota_fiscal_pdf_path FROM pdfs ORDER BY id DESC LIMIT 1')
     nota_fiscal_pdf_path = cursor.fetchone()
     conn.close()
     if nota_fiscal_pdf_path:
@@ -334,80 +372,79 @@ def get_pdf_path():
     else:
         return None
 
-
-def add_product_window_update_image(add_product_window, selected_image_path):
-    if selected_image_path and os.path.exists(selected_image_path):
-        # Check if the file is a valid image file
-        valid_image_extensions = {".png", ".jpg", ".jpeg"}
-        _, file_extension = os.path.splitext(selected_image_path)
-        if file_extension.lower() in valid_image_extensions:
-            # Converting the image to bytes
-            with open(selected_image_path, 'rb') as image_file:
-                image_data = image_file.read()
-
-            # Converting the image to a format compatible with PySimpleGUIQt
-            image_pil = Image.open(io.BytesIO(image_data))
-            image_pil.thumbnail((300, 300))  # Resize if needed
-            image_qt = ImageQt.ImageQt(image_pil)
-            pixmap = sg.QtGui.QPixmap.fromImage(image_qt)
-
-            # Updating the image in the layout
-            add_product_window['-IMAGE-'].setPixmap(pixmap)
-            add_product_window['-IMAGE-'].setVisible(True)
-    else:
-        add_product_window['-IMAGE-'].setVisible(False)
-
-
 ########
 
 # Interface gráfica com PySimpleGUI
+
+
 def config_layout():
     return [
         [sg.Text("Porta COM:"), sg.InputText(key="porta_COM")],
-        [sg.Text("Taxa Band:"), sg.Combo(['300', '1200' , '2400', '4800', '9600', '19200', '38400', '57600', '74880', '115200', '230400', '250000', '500000'], tooltip="choose something", key="taxa_band", size=(10, 1))],
+        [sg.Text("Taxa Band:"), sg.Combo(['300', '1200', '2400', '4800', '9600', '19200', '38400', '57600', '74880',
+                                          '115200', '230400', '250000', '500000'], tooltip="choose something", key="taxa_band", size=(10, 1))],
         [sg.Button("OK")]
     ]
 
+
 def main_layout():
     return [
-        [sg.Button("Adicionar Produto"), sg.Button("Exibir Produtos Existentes")], [sg.Button('Calibrar')],
-        # [sg.HSeparator("Separador")],
-        [sg.Text("Localizar por Nome:"), sg.InputText(key="filtro_nome"), sg.Button("Localizar Produto")],
-        # [sg.HSeparator("Separador")],
+        [sg.Button("Adicionar Produto"), sg.Button(
+            "Exibir Produtos Existentes")], [sg.Button('Calibrar')],
+        [sg.HSeparator("Separador")],
+        [sg.Text("Localizar por Nome:"), sg.InputText(
+            key="filtro_nome"), sg.Button("Localizar Produto")],
+        [sg.HSeparator("Separador")],
         [sg.Text('', size=(20, 1), key='-TEMPERATURA-')],
         [sg.Text('', size=(20, 1), key='-UMIDADE-')],
         [sg.Button('Voltar')]
-]
+    ]
+
 
 def add_product_layout():
-    layout = [
-        [sg.Text("Nome:"), sg.InputText(key="nome", size=(40, 1), pad=(54, None))],
-        [sg.Text("Registro:"), sg.InputText(key="registro", size=(40, 1), pad=(40, None))],
-        [sg.Text("Eixo X:"), sg.InputText(key="eixo_x", size=(40, 1), pad=(53, None))],
-        [sg.Text("Eixo Z:"), sg.InputText(key="eixo_z", size=(40, 1), pad=(53, None))],
-        [sg.Text("Validade:"), sg.InputText(key="validade", size=(40, 1), pad=(53, None))],
-        [sg.Text("Quantidade:"), sg.InputText(key="quantidade", size=(20, 1), pad=(25, None)), sg.Combo(['unid' , 'mmg', 'mg', 'g', 'ml'], tooltip="choose something", key="medida_da_quantidade", size=(7, 1))],
-        [sg.Button("Selecionar Imagem", key="selecionar_imagem"), sg.Button("Limpar Imagem", key="limpar_imagem")],
-        [sg.Image(key='-IMAGE-', size=(300, 300), pad=(0, 0), visible=False)],
-        [sg.Text("Nota Fiscal:"), sg.Input(key="-NOTA_FISCAL_PDF-"), sg.FileBrowse(key="-BROWSE_PDF-", file_types=(("PDF Files", "*.pdf"),))],
+    return [
+        [sg.Text("Nome:"), sg.InputText(
+            key="nome", size=(40, 1), pad=(54, None))],
+        [sg.Text("Registro:"), sg.InputText(
+            key="registro", size=(40, 1), pad=(40, None))],
+        [sg.Text("Eixo X:"), sg.InputText(
+            key="eixo_x", size=(40, 1), pad=(53, None))],
+        [sg.Text("Eixo Z:"), sg.InputText(
+            key="eixo_z", size=(40, 1), pad=(53, None))],
+        [sg.Text("Validade:"), sg.InputText(
+            key="validade", size=(40, 1), pad=(53, None))],
+        [sg.Text("Quantidade:"), sg.InputText(key="quantidade", size=(20, 1), pad=(25, None)), sg.Combo(
+            ['unid', 'mmg', 'mg', 'g', 'ml'], tooltip="choose something", key="medida_da_quantidade", size=(7, 1))],
+        [sg.Button("Selecionar Imagem", key="selecionar_imagem"),
+         sg.Button("Limpar Imagem", key="limpar_imagem")],
+        [sg.Image(key='-IMAGE-', size=(300, 300), pad=(0, 0),)],
+        [sg.Text("Nota Fiscal:"), sg.Input(key="-NOTA_FISCAL_PDF-"),
+         sg.FileBrowse(key="-BROWSE_PDF-", file_types=(("PDF Files", "*.pdf"),))],
         [sg.Button("Adicionar")],
         [sg.Button('Voltar')],
         [sg.Text("", visible=False, key="imagem_path")],
     ]
 
-    return layout
 
 def info_product_layout(has_selected_image=False, image_path=None):
     layout = [
-        [sg.Text("Nome:"), sg.Text(nome, key="nome", size=(40, 1), pad=(54, None))],
-        [sg.Text("Registro:"), sg.Text(registro, key="registro", size=(40, 1), pad=(40, None))],
-        [sg.Text("Validade:"), sg.Text(validade, key="validade", size=(40, 1))],
-        [sg.Text("Quantidade:"), sg.Text(quantidade, key="quantidade", size=(20, 1), pad=(25, None))], 
-        [sg.Text("Medida da Quantidade: "), sg.Text(medida_da_quantidade, key="medida_da_quantidade")],
-        [sg.Text("Eixo X:"), sg.Text(eixo_x, key="eixo_x", size=(40, 1), pad=(53, None))],
-        [sg.Text("Eixo Z:"), sg.Text(eixo_z, key="eixo_z", size=(40, 1), pad=(53, None))],
-        [sg.Image(key='-PRODUCT_IMAGE-', size=(300, 300), pad=(0, 0), expand_y=False, expand_x=False, visible=False)],
-        [sg.Button("Guardar Produto"), sg.Button("Retirar Produto")], [sg.Button("Limpar")],
+        [sg.Text("Nome:"), sg.Text(nome, key="nome",
+                                   size=(40, 1), pad=(54, None))],
+        [sg.Text("Registro:"), sg.Text(
+            registro, key="registro", size=(40, 1), pad=(40, None))],
+        [sg.Text("Validade:"), sg.Text(
+            validade, key="validade", size=(40, 1))],
+        [sg.Text("Quantidade:"), sg.Text(
+            quantidade, key="quantidade", size=(20, 1), pad=(25, None))],
+        [sg.Text("Medida da Quantidade: "), sg.Text(
+            medida_da_quantidade, key="medida_da_quantidade")],
+        [sg.Text("Eixo X:"), sg.Text(
+            eixo_x, key="eixo_x", size=(40, 1), pad=(53, None))],
+        [sg.Text("Eixo Z:"), sg.Text(
+            eixo_z, key="eixo_z", size=(40, 1), pad=(53, None))],
+        [sg.Image(key='-PRODUCT_IMAGE-', size=(300, 300), pad=(0, 0),
+                  expand_y=False, expand_x=False, visible=False)],
+        [sg.Button("Guardar Produto"), sg.Button(
+            "Retirar Produto")], [sg.Button("Limpar")],
         [sg.Button("Visualizar a Nota Fiscal")],
         [sg.Button('Voltar')]
     ]
@@ -422,10 +459,11 @@ def takeOff_product_layout():
     return [
         [sg.Text("Deseja realizar limpeza?")],
         [sg.Button("Sim"), sg.Button("Não")]
-]
+    ]
+
 
 # JANELA DE CONFIGURAÇÕES
-config_window = sg.Window("Configurações", config_layout(), finalize=True, icon=icone_path)
+config_window = sg.Window("Configurações", config_layout(), finalize=True)
 main_window = None
 
 # Loop para a janela de configurações
@@ -467,15 +505,17 @@ try:
     ''')
 
 except sqlite3.Error as e:
-    sg.popup('Erro ao conectar ao banco de dados: ' + str(e), title='Erro', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+    sg.popup('Erro ao conectar ao banco de dados: ' + str(e), title='Erro',
+             non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
     sys.exit(1)
 
-
 # JANELA PRINCIPAL
-main_window = sg.Window("Controle de Estoque Farmacêutico Automático", main_layout(), icon=icone_path)
+main_window = sg.Window("Controle de Estoque Farmacêutico Automático",
+                        main_layout())
 
 # Inicia a thread para leitura serial
-serial_thread_instance = threading.Thread(target=serial_thread, args=(ser,), daemon=True)
+serial_thread_instance = threading.Thread(
+    target=serial_thread, args=(ser,), daemon=True)
 serial_thread_instance.start()
 
 while True:
@@ -484,12 +524,13 @@ while True:
     if event == sg.WINDOW_CLOSED:
         break
 
-    elif event == 'Voltar':  
-        main_window.close()  
+    elif event == 'Voltar':
+        main_window.close()
         clear_serial_input(ser)
         ser.close()  # Fecha a conexão serial
         # Reabre a janela de configurações
-        config_window = sg.Window("Configurações", config_layout(), finalize=True, icon=icone_path)
+        config_window = sg.Window(
+            "Configurações", config_layout(), finalize=True)
 
         # Chama a função para redefinir os valores
         reset_config_values(config_window)
@@ -501,22 +542,23 @@ while True:
                 break
 
             elif event == 'OK':
-                ser = connect_to_arduino(values["porta_COM"], values["taxa_band"])
+                ser = connect_to_arduino(
+                    values["porta_COM"], values["taxa_band"])
                 if ser:
                     break
 
-        config_window.close() 
+        config_window.close()
 
         # Reabre a janela principal
-        main_window = sg.Window("Controle de Estoque Farmacêutico Automático", main_layout(), icon=icone_path)
+        main_window = sg.Window(
+            "Controle de Estoque Farmacêutico Automático", main_layout())
         serial_communication(ser)
 
     elif event == 'Adicionar Produto':
         main_window.hide()
 
-        add_product_window = sg.Window("Adicione Produtos", add_product_layout(), icon=icone_path)
-
-        tk_image = None 
+        add_product_window = sg.Window(
+            "Adicione Produtos", add_product_layout())
 
         while True:
             add_event, add_values = add_product_window.read()
@@ -535,26 +577,35 @@ while True:
                 validade = add_values.get("validade")
 
                 if not nome:
-                    sg.popup('Campo Nome obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Nome obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
+                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not registro:
-                    sg.popup('Campo Registro obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Registro obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
+                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not nota_fiscal_pdf_path:
-                    sg.popup('Campo Nota Fiscal obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Nota Fiscal obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
+                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not eixo_x.isdigit():
-                    sg.popup('Campo Eixo X é obrigatório!\n\nPreencha com números inteiros.', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Eixo X é obrigatório!\n\nPreencha com números inteiros.', title='Campo Obrigatório',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not eixo_z.isdigit():
-                    sg.popup('Campo Eixo Z é obrigatório!\n\nPreencha com números inteiros.', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Eixo Z é obrigatório!\n\nPreencha com números inteiros.', title='Campo Obrigatório',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not quantidade.isdigit():
-                    sg.popup('Campo Quantidade é obrigatório!\n\nPreencha com números inteiros', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Quantidade é obrigatório!\n\nPreencha com números inteiros', title='Campo Obrigatório',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not medida_da_quantidade:
-                    sg.popup('Campo Medida da Quantidade obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Medida da Quantidade obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
+                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 elif not validade:
-                    sg.popup('Campo Validade obrigatório!', title='Campo Obrigatório', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3, icon=icone_path)
+                    sg.popup('Campo Validade obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
+                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                 else:
                     if selected_image_path and os.path.exists(selected_image_path):
                         # Check if the file is a valid image file
                         valid_image_extensions = {".png", ".jpg", ".jpeg"}
-                        _, file_extension = os.path.splitext(selected_image_path)
+                        _, file_extension = os.path.splitext(
+                            selected_image_path)
                         if file_extension.lower() in valid_image_extensions:
                             # Converting the image to bytes
                             with open(selected_image_path, 'rb') as image_file:
@@ -562,36 +613,65 @@ while True:
 
                             # Resizing the image to 300x300 pixels
                             pil_image = Image.open(BytesIO(image_data))
-                            pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.LANCZOS)
+                            pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(
+                                Image, 'ANTIALIAS') else Image.LANCZOS)
 
                             # Converting the image to the format supported by PySimpleGUI
                             tk_image = ImageTk.PhotoImage(pil_image)
 
                             # Updating the image in the layout
                             add_product_window['-IMAGE-'].update(data=tk_image)
-                            
+
                             # If everything is fine, add the product
-                            adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, validade, selected_image_path)
+                            adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z,
+                                              quantidade, medida_da_quantidade, validade, selected_image_path)
 
                     else:
                         # If no image is selected, add the product without an image
-                        adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida_da_quantidade, validade, None)
-
+                        adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path,
+                                          eixo_z, quantidade, medida_da_quantidade, validade, None)
 
             elif add_event == 'selecionar_imagem':
-                selected_image_path = sg.popup_get_file("Selecionar Imagem", file_types=(("Imagens", "*.png;*.jpg;*.jpeg"),))
+                selected_image_path = sg.popup_get_file(
+                    "Selecionar Imagem", file_types=(("Imagens", "*.png;*.jpg;*.jpeg"),))
                 add_product_window["imagem_path"].update(selected_image_path)
-                add_product_window_update_image(add_product_window, selected_image_path)
-                continue
-            
-            elif event == 'limpar_imagem':
+                if selected_image_path and os.path.exists(selected_image_path):
+                    if os.path.exists(selected_image_path) and os.path.isfile(selected_image_path):
+
+                        # Check if the file is a valid image file
+                        valid_image_extensions = {".png", ".jpg", ".jpeg"}
+                        _, file_extension = os.path.splitext(
+                            selected_image_path)
+                        if file_extension.lower() in valid_image_extensions:
+                            # Converte a imagem para bytes
+                            with open(selected_image_path, 'rb') as image_file:
+                                image_data = image_file .read()
+
+                            # Redimensiona a imagem para 300x300 pixels
+                            pil_image = Image.open(BytesIO(image_data))
+                            pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(
+                                Image, 'ANTIALIAS') else Image.LANCZOS)
+
+                            # Converte a imagem para o formato suportado pelo PySimpleGUI
+                            tk_image = ImageTk.PhotoImage(pil_image)
+
+                            # Atualiza a imagem no layout
+                            add_product_window['-IMAGE-'].update(data=tk_image)
+                else:
+                    sg.popup('Imagem não selecionada ou caminho inválido!', title='Erro', non_blocking=True, font=(
+                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
+                    continue  # Continue para o próximo loop, não adicionando o produto
+
+            elif add_event == 'limpar_imagem':
                 selected_image_path = None
-                image_data = get_image_data('no_image.png')  # Caminho para uma imagem padrão ou de aviso
-                window['-IMAGE-'].update(data=image_data)
+                add_product_window["imagem_path"].update(selected_image_path)
+                add_product_window['-IMAGE-'].update(data=None)
 
             elif add_event == 'selecionar_pdf':
-                selected_nota_fiscal_pdf_path = sg.popup_get_file("Selecionar PDF", file_types=(("Arquivos PDF", "*.pdf"),), icon=icone_path)
-                add_product_window["nota_fiscal_pdf_path"].update(selected_nota_fiscal_pdf_path)
+                selected_nota_fiscal_pdf_path = sg.popup_get_file(
+                    "Selecionar PDF", file_types=(("Arquivos PDF", "*.pdf"),))
+                add_product_window["nota_fiscal_pdf_path"].update(
+                    selected_nota_fiscal_pdf_path)
 
             elif add_event == 'Voltar':
                 add_product_window.close()
@@ -602,7 +682,8 @@ while True:
         if produtos:
             main_window.hide()
 
-            products_table_window = sg.Window("Produtos Existentes", products_table_layout(produtos), finalize=True, icon=icone_path)
+            products_table_window = sg.Window(
+                "Produtos Existentes", products_table_layout(produtos), finalize=True)
 
             while True:
                 table_event, table_values = products_table_window.read()
@@ -621,9 +702,9 @@ while True:
                         if product_info:
                             products_info_loop()
 
-                    
         else:
-            sg.popup('Nenhum produto cadastrado.', title='Produtos Não Encontrados', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, icon=icone_path)
+            sg.popup('Nenhum produto cadastrado.', title='Produtos Não Encontrados',
+                     non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
 
     elif event == 'Calibrar':
         calibrar = f"CALIBRAR" + '\n'
@@ -643,7 +724,8 @@ while True:
                         products_info_loop()
 
                 else:
-                    products_table_window = sg.Window("Listagem de Produtos", products_table_layout(produtos), finalize=True, icon=icone_path)
+                    products_table_window = sg.Window(
+                        "Listagem de Produtos", products_table_layout(produtos), finalize=True)
 
                     while True:
                         table_event, table_values = products_table_window.read()
@@ -656,15 +738,16 @@ while True:
                             selected_row = table_values["table"]
                             if selected_row:
                                 selected_product_name = produtos[selected_row[0]][0]
-                                product_info = get_product_info(selected_product_name)
+                                product_info = get_product_info(
+                                    selected_product_name)
 
                                 # Ensure that product_info is not None before using it
                                 if product_info:
                                     products_info_loop()
 
-
             else:
-                sg.popup('Nenhum produto encontrado para o filtro fornecido.', title='Produtos não encontrados', non_blocking=True, font=('Helvetica', 10), keep_on_top=True, icon=icone_path)
+                sg.popup('Nenhum produto encontrado para o filtro fornecido.', title='Produtos não encontrados',
+                         non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
 
 if main_window:
     main_window.close()
