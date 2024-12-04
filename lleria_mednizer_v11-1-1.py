@@ -309,8 +309,6 @@ def products_info_loop():
                     ser.write(guardar.encode())
                     time.sleep(0.1)
                     print(guardar)
-                    sg.popup(f"O produto foi guardado.", title='Produto guardado',
-                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                     info_product_window.close()
                     products_table_window.close()
                     main_window.un_hide()
@@ -330,8 +328,6 @@ def products_info_loop():
                     ser.write(limpar.encode())
                     time.sleep(0.1)
                     print(limpar)
-                    sg.popup(f"O produto foi limpo.", title='Produto limpo',
-                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                     info_product_window.close()
                     products_table_window.close()
                     main_window.un_hide()
@@ -351,8 +347,6 @@ def products_info_loop():
                     ser.write(retirar.encode())
                     time.sleep(0.1)
                     print(retirar)
-                    sg.popup(f"O produto foi retirado.", title='Produto retirado',
-                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                     info_product_window.close()
                     products_table_window.close()
                     main_window.un_hide()
@@ -365,44 +359,6 @@ def products_info_loop():
                 print("Erro em Guardar: " + str(e))
 
 # Função para leitura e comunicação serial
-
-
-# def read_serial(ser):
-#     global Temperatura, Umidade
-
-#     buffer = ''  # Buffer para armazenar dados parciais
-#     start_time = time.time()  # Tempo inicial
-
-#     while True:
-#         if serial_thread_stop_event.is_set():
-#             break  # Sai do loop se o evento de parada for sinalizado
-
-#         try:
-#             data = ser.readline().decode('utf-8')
-#             if '\n' in data:
-#                 buffer += data
-#                 values = buffer.split('\n')
-#                 if len(values) >= 2 and values[0] and values[1]:
-#                     # Filtra valores vazios
-#                     values = [str(value) for value in values if value]
-
-#                     with lock_temp_umi:
-#                         Temperatura = values[0]
-#                         Umidade = float(values[1])
-
-#                     # Atualiza a interface gráfica com os novos valores
-#                     update_gui_window(Temperatura, Umidade)
-#                     buffer = ''  # Limpa o buffer após processar os dados
-
-#             # Verifica se passou 5 segundos
-#             elapsed_time = time.time() - start_time
-#             if elapsed_time >= 5:
-#                 break
-
-#         except Exception as e:
-#             print(f"Erro na leitura serial1: {e}")
-#             break
-#     pass
 
 def read_serial(ser):
     global temperatura, umidade
