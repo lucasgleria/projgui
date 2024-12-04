@@ -20,10 +20,13 @@ import sys
 import cv2
 import os
 import re
+import io
 
 ####### LISTAS #######
 
 # Lista de palavras-chave para identificar o nome de medicamentos
+
+
 medicine_keywords = [
     'abacavir', 'abiraterona', 'acetaminofeno', 'acetato de tocoferol', 'acetato de zinco', 'aciclovir', 'ácido ascórbico', 'ácido azelaico', 'ácido fólico', 'ácido fusídico', 'ácido glicólico',
     'ácido pantotênico', 'ácido salicílico', 'ácido zoledrônico', 'acitretina', 'adapaleno', 'adrenalina', 'água', 'álcool', 'alendronato', 'alfacalcidol', 'alfentanila', 'alprazolam', 'amiodarona',
@@ -70,14 +73,21 @@ medicine_keywords = [
 # Lista de unidades de medida permitidas
 medida_keywords = ["g", "mg", "mmg", "mcg", "L", "ml", "mml", "u"]
 
+# Lista de taxas de banda
+baud_gates = ['300', '1200', '2400', '4800', '9600', '19200',
+              '38400', '57600', '74880', '115200', '230400', '250000', '500000']
+
 ####### CONFIGURAÇÕES #######
 
 # COnfigurações do PysimpleGUI
 sg.theme('lightblue7')
-sg.set_options(font=('Arial', 12))
+default_font = 'Arial'
+default_font_size = 12
+current_font_size = default_font_size
+sg.set_options(font=(default_font, current_font_size))
 
 # Lock para garantir acesso seguro às variáveis globais pelo threading
-data_lock = threading.Lock()
+lock_temp_umi = threading.Lock()
 
 ####### BIBLIOTECAS #######
 
@@ -85,10 +95,17 @@ informacoes_extraidas = {"nome": None, 'quantidade': None, 'medida': None}
 
 ####### VÁRIAVEIS #######
 
-# Variáveis setadas como None para evitar bugs
-nota_fiscal_pdf_path = None
+# Variáveis Flags
+find_quantidade_and_medida_called = False
+serial_thread_running = True
 has_selected_image = False
+serial_thread_stop_event = threading.Event()
+
+# Variáveis setadas como None para evitar bugs
+serial_thread_instance = None
+nota_fiscal_pdf_path = None
 ultima_imagem_id = None
+nome_medicamento = None
 main_window = None
 Temperatura = None
 quantidade = None
@@ -101,6 +118,15 @@ eixo_z = None
 medida = None
 path = None
 nome = None
+velx = 0
+vely = 0
+velz = 0
+aclx = 0
+acly = 0
+aclz = 0
+posx = 0
+posy = 0
+posz = 0
 
 ####### FUNÇÕES GLOBAIS #######
 
@@ -116,7 +142,8 @@ def connect_to_arduino(porta_COM, taxa_band):
         elif not taxa_band.isnumeric():
             raise ValueError('A Taxa Band deve ser um valor numérico!')
 
-        ser = serial.Serial(porta_COM, int(taxa_band), timeout=2)
+        ser = serial.Serial(porta_COM, int(taxa_band), timeout=5)
+        print("Porta serial aberta co sucesso")
         return ser
 
     except ValueError as ve:
@@ -139,20 +166,39 @@ def clear_serial_input(ser):
         while ser.in_waiting:
             ser.read(ser.in_waiting)
 
+
+# Função para obter portas COM disponíveis
+
+
+def get_available_com_ports():
+    ports = list(serial.tools.list_ports.comports())
+    return [port.device for port in ports]
+
+
+# Função para obter as medidas pré-selecionadas
+
+def get_available_medida_keywords(medida_keywords):
+    return medida_keywords
+
+
+# Função para obter taxas de banda adequadas
+
+def get_baud_rates():
+    return baud_gates
+
+
 # Função para adicionar produtos
 
 
 def adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida, validade, path_imagem):
     global has_selected_image
-    data_criada = datetime.datetime.now()
+    data_criada = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
     cursor.execute('INSERT INTO produtos (nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida, path, validade, data_criada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                    (nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida, path_imagem, validade, data_criada))
     cursor.execute('INSERT INTO imagens (path) VALUES (?)', (path_imagem,))
     conn.commit()
     global ultima_imagem_id
     ultima_imagem_id = cursor.lastrowid
-    sg.popup(f"O produto {nome} foi adicionado.", title='Produto adicionado',
-             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
     has_selected_image = path_imagem is not None
 
 # Função para exibir produtos
@@ -166,11 +212,20 @@ def exibir_produtos_existentes():
 # Função para localizar produtos
 
 
-def localizar_produto(filtro_nome):
-    cursor.execute(
-        'SELECT nome, registro FROM produtos WHERE nome LIKE ?', ('%' + filtro_nome + '%',))
+def localizar_produto(filtro):
+    if filtro.isdigit():
+        # Busca pelo registro
+        query = 'SELECT nome, registro FROM produtos WHERE registro LIKE ?'
+        params = ('%' + filtro + '%',)
+    else:
+        # Busca pelo nome
+        query = 'SELECT nome, registro FROM produtos WHERE nome LIKE ?'
+        params = ('%' + filtro + '%',)
+
+    cursor.execute(query, params)
     produtos = cursor.fetchall()
     return produtos
+
 
 # Função para pegar as informações do produto
 
@@ -249,101 +304,139 @@ def products_info_loop():
 
         elif info_event == 'Guardar Produto':
             try:
-                guardar = f'X{eixo_x}Z{eixo_z}GUARDAR' + '\n'
-                ser.write(guardar.encode())
-                sg.popup(f"O produto foi guardado.", title='Produto guardado',
-                         non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                info_product_window.close()
-                products_table_window.close()
-                main_window.un_hide()
+                guardar = f'R2 X{eixo_x} Z{eixo_z}' + '\n'
+                try:
+                    ser.write(guardar.encode())
+                    time.sleep(0.1)
+                    print(guardar)
+                    sg.popup(f"O produto foi guardado.", title='Produto guardado',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                    info_product_window.close()
+                    products_table_window.close()
+                    main_window.un_hide()
+                except serial.serialutil.SerialTimeoutException:
+                    print(
+                        "Timeout ao tentar escrever na porta serial. Tentando novamente...")
             except Exception as e:
                 sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
                                non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                 print("Erro em Guardar: " + str(e))
-        
+
         elif info_event == 'Limpar Produto':
             try:
-                limpar = f'X{eixo_x}Z{eixo_z}LIMPAR' + '\n'
-                ser.write(limpar.encode())
-                sg.popup(f"O produto foi limpo.", title='Produto limpo',
-                non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                info_product_window.close()
-                products_table_window.close()
-                main_window.un_hide()
+                limpar = f'R3 X{eixo_x} Z{eixo_z}' + '\n'
+
+                try:
+                    ser.write(limpar.encode())
+                    time.sleep(0.1)
+                    print(limpar)
+                    sg.popup(f"O produto foi limpo.", title='Produto limpo',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                    info_product_window.close()
+                    products_table_window.close()
+                    main_window.un_hide()
+                except serial.serialutil.SerialTimeoutException:
+                    print(
+                        "Timeout ao tentar escrever na porta serial. Tentando novamente...")
+
             except Exception as e:
                 sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
                                non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                 print("Erro em Limpar: " + str(e))
 
         elif info_event == 'Retirar Produto':
-            info_product_window.hide()
-
-            takeOff_product_window = sg.Window(
-                "Retirada do Produto", take_off_layout(), finalize=True)
-
-            while True:
-                takeOff_event, takeOff_values = takeOff_product_window.read()
-
-                if takeOff_event == sg.WINDOW_CLOSED:
-                    takeOff_product_window.close()
-                    break
-
-                elif takeOff_event == 'Sim':
-                    try:
-                        teste_sim = f'X{eixo_x}Z{eixo_z}RETIRAR' + '\n'
-                        ser.write(teste_sim.encode())
-                        sg.popup(f"O produto foi retirado.", title='Produto retirado',
-                                 non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                        takeOff_product_window.close()
-                        info_product_window.close()
-                        products_table_window.close()
-                        main_window.un_hide()
-                    except Exception as e:
-                        sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
-                                       non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                        print("Erro em Retirar -> Sim: " + str(e))
-
-                elif takeOff_event == 'Não':
-                    try:
-                        teste_nao = f'X{eixo_x}Z{eixo_z}RETIRARN' + '\n'
-                        ser.write(teste_nao.encode())
-                        sg.popup(f"O produto foi retirado.", title='Produto retirado',
-                                 non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                        takeOff_product_window.close()
-                        info_product_window.close()
-                        products_table_window.close()
-                        main_window.un_hide()
-                    except Exception as e:
-                        sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
-                                       non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
-                        print("Erro em Retirar-> Não: " + str(e))
+            try:
+                retirar = f'R0 X{eixo_x} Z{eixo_z}' + '\n'
+                try:
+                    ser.write(retirar.encode())
+                    time.sleep(0.1)
+                    print(retirar)
+                    sg.popup(f"O produto foi retirado.", title='Produto retirado',
+                             non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                    info_product_window.close()
+                    products_table_window.close()
+                    main_window.un_hide()
+                except serial.serialutil.SerialTimeoutException:
+                    print(
+                        "Timeout ao tentar escrever na porta serial. Tentando novamente...")
+            except Exception as e:
+                sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
+                               non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                print("Erro em Guardar: " + str(e))
 
 # Função para leitura e comunicação serial
 
 
+# def read_serial(ser):
+#     global Temperatura, Umidade
+
+#     buffer = ''  # Buffer para armazenar dados parciais
+#     start_time = time.time()  # Tempo inicial
+
+#     while True:
+#         if serial_thread_stop_event.is_set():
+#             break  # Sai do loop se o evento de parada for sinalizado
+
+#         try:
+#             data = ser.readline().decode('utf-8')
+#             if '\n' in data:
+#                 buffer += data
+#                 values = buffer.split('\n')
+#                 if len(values) >= 2 and values[0] and values[1]:
+#                     # Filtra valores vazios
+#                     values = [str(value) for value in values if value]
+
+#                     with lock_temp_umi:
+#                         Temperatura = values[0]
+#                         Umidade = float(values[1])
+
+#                     # Atualiza a interface gráfica com os novos valores
+#                     update_gui_window(Temperatura, Umidade)
+#                     buffer = ''  # Limpa o buffer após processar os dados
+
+#             # Verifica se passou 5 segundos
+#             elapsed_time = time.time() - start_time
+#             if elapsed_time >= 5:
+#                 break
+
+#         except Exception as e:
+#             print(f"Erro na leitura serial1: {e}")
+#             break
+#     pass
+
 def read_serial(ser):
-    global Temperatura, Umidade
+    global temperatura, umidade
 
     buffer = ''  # Buffer para armazenar dados parciais
     start_time = time.time()  # Tempo inicial
 
     while True:
+        if serial_thread_stop_event.is_set():
+            break  # Sai do loop se o evento de parada for sinalizado
+
         try:
             data = ser.readline().decode('utf-8')
-            if '\n' in data:
-                buffer += data
-                values = buffer.split('\n')
-                if len(values) >= 2 and values[0] and values[1]:
-                    # Filtra valores vazios
-                    values = [str(value) for value in values if value]
-
-                    with data_lock:
-                        Temperatura = values[0]
-                        Umidade = float(values[1])
+            buffer += data  # Adiciona ao buffer
+            
+            if '\n' in buffer:
+                # Quando encontramos uma nova linha, processamos o buffer
+                values = buffer.strip().split()
+                
+                # Procura por "T:" e "U:" no texto recebido
+                temp_str = next((v[2:] for v in values if v.startswith("T:")), None)
+                umi_str = next((v[2:] for v in values if v.startswith("U:")), None)
+                
+                if temp_str is not None and umi_str is not None:
+                    with lock_temp_umi:
+                        temperatura = temp_str
+                        umidade = umi_str
 
                     # Atualiza a interface gráfica com os novos valores
-                    update_gui_window(Temperatura, Umidade)
-                    buffer = ''  # Limpa o buffer após processar os dados
+                    update_gui_window(temperatura, umidade)
+                    print(temperatura)
+                    print(umidade)
+                
+                buffer = ''  # Limpa o buffer após processar os dados
 
             # Verifica se passou 5 segundos
             elapsed_time = time.time() - start_time
@@ -351,7 +444,7 @@ def read_serial(ser):
                 break
 
         except Exception as e:
-            print(f"Erro na leitura serial: {e}")
+            print(f"Erro na leitura serial1: {e}")
             break
 
 # Função para atualizar a interface gráfica
@@ -359,22 +452,49 @@ def read_serial(ser):
 
 def update_gui_window(temperatura, umidade):
     global main_window  # Adicionando global window
-    main_window['-TEMPERATURA-'].update(f'Temperatura: {temperatura}°C')
-    main_window['-UMIDADE-'].update(f'Umidade: {umidade * 100:.0f}%')
-    main_window.Refresh()  # Atualiza a janela
+    if main_window:
+        main_window['-TEMPERATURA-'].update(f'Temperatura: {temperatura}°C')
+        main_window['-UMIDADE-'].update(f'Umidade: {umidade}%')
+        main_window.Refresh()  # Atualiza a janela
 
 # Thread para leitura serial
 
 
 def serial_thread(ser):
-    while True:
-        time.sleep(1)
-        if ser:
-            enter = f'\n'
-            ser.write(enter.encode())
-            read_serial(ser)
-        else:
-            reset_config_values(ser)
+    global serial_thread_running
+    while serial_thread_running:
+        try:
+            if serial_thread_stop_event.is_set():
+                break  # Sai do loop se o evento de parada for sinalizado
+            if ser and ser.is_open:
+                enter = 'R1' + '\n'  # Envia o comando "R1 \n"
+                try:
+                    ser.write(enter.encode())
+                    time.sleep(0.1)
+                    read_serial(ser)
+                except serial.serialutil.SerialTimeoutException:
+                    print("Timeout ao tentar escrever na porta serial. Tentando novamente...")
+        except Exception as e:
+            print("Erro na leitura serial2:", str(e))
+            break
+
+
+def stop_serial_thread():
+    global serial_thread_running
+    serial_thread_running = False
+    serial_thread_stop_event.set()  # Sinaliza o evento de parada
+    if serial_thread_instance:
+        serial_thread_instance.join()  # Aguarda a thread terminar
+
+
+def start_serial_thread(ser):
+    global serial_thread_instance, serial_thread_running, serial_thread_stop_event
+    serial_thread_stop_event.clear()  # Redefine o evento de parada
+    serial_thread_running = True
+    serial_thread_instance = threading.Thread(
+        target=serial_thread, args=(ser,), daemon=True)
+    serial_thread_instance.start()
+
 
 # Função para avançar páginas do pdf
 
@@ -405,15 +525,55 @@ def display_page(image_elem, pdf_document, page_num, window_size):
 # Função para visualização da janela do pdf
 
 
+def view_selected_pdf_window(selected_nota_fiscal_pdf_path):
+    pdf_document = fitz.open(selected_nota_fiscal_pdf_path)
+    num_pages = pdf_document.page_count
+
+    window_size = (500, 425)
+    layout = [
+        [sg.Text(
+            f'Página 1 de {num_pages}', key='-PAGE_COUNTER-')],
+        [sg.Button('Anterior'), sg.Button('Próxima')],
+        [sg.Button('Abrir no Navegador'), sg.Button('Fechar')],
+        [sg.Image(key='-IMAGE-')]
+    ]
+
+    window = sg.Window('Visualizar PDF', layout,
+                       finalize=True, size=window_size)
+    image_elem = window['-IMAGE-']
+    page_num = 0
+
+    while True:
+        display_page_num = display_page(
+            image_elem, pdf_document, page_num, window_size)
+        window['-PAGE_COUNTER-'].update(
+            f'Página {display_page_num} de {num_pages}')
+
+        event, _ = window.read()
+
+        if event == sg.WINDOW_CLOSED or event == 'Fechar':
+            break
+        elif event == 'Próxima' and page_num < num_pages - 1:
+            page_num += 1
+        elif event == 'Anterior' and page_num > 0:
+            page_num -= 1
+        elif event == 'Abrir no Navegador':
+            webbrowser.open_new_tab(selected_nota_fiscal_pdf_path)
+
+    pdf_document.close()
+    window.close()
+
+
 def view_pdf_window(nota_fiscal_pdf_path):
     pdf_document = fitz.open(nota_fiscal_pdf_path)
     num_pages = pdf_document.page_count
 
     window_size = (500, 425)
     layout = [
-        [sg.Text(f'Página 1 de {num_pages}', key='-PAGE_COUNTER-')],
-        [sg.Button('Anterior'), sg.Button('Próxima'), sg.Button(
-            'Abrir no Navegador'), sg.Button('Fechar')],
+        [sg.Text(
+            f'Página 1 de {num_pages}', key='-PAGE_COUNTER-')],
+        [sg.Button('Anterior'), sg.Button('Próxima')],
+        [sg.Button('Abrir no Navegador'), sg.Button('Fechar')],
         [sg.Image(key='-IMAGE-')]
     ]
 
@@ -441,6 +601,22 @@ def view_pdf_window(nota_fiscal_pdf_path):
 
     pdf_document.close()
     window.close()
+
+
+def limpar_inputs(add_product_window, filepath):
+    filepath = None
+    add_product_window["path"].update(filepath)
+    add_product_window['-IMAGE-'].update(data=None)
+    add_product_window["nome"].update("")
+    add_product_window["registro"].update("")
+    add_product_window["eixo_x"].update("")
+    add_product_window["-NOTA_FISCAL_PDF-"].update("")
+    add_product_window["eixo_z"].update("")
+    add_product_window["quantidade"].update("")
+    add_product_window["medida"].update("")
+    add_product_window["validade"].update("")
+    add_product_window['-PDF_PREVIEW-'].update(data=None)
+    add_product_window['text_pdf_info'].update(visible=False)
 
 # Função para coletar o path do pdf
 
@@ -486,156 +662,273 @@ def ocr_with_easyocr(image):
 # Função para extrair o nome da imagem
 
 
-def extract_nome(add_product_window, conn, choose_window, attempt=1):
+def extract_nome(add_product_window, conn, choose_window, attempt=1, timeout=5):
     global ultima_imagem_id
-    path = get_image(conn, ultima_imagem_id)
-    if path:
-        if attempt == 1:
-            image = cv2.imread(path)
-            text = ocr_with_easyocr(image)
-        elif attempt == 2:
-            image = Image.open(path)
-            text = pytesseract.image_to_string(image)
-        else:
-            tools = pyocr.get_available_tools()
-            if len(tools) == 0:
-                sg.popup_error(
-                    "Nenhum motor OCR disponível. Certifique-se de ter o Tesseract-OCR instalado.")
-                return None
+    stop_flag = [False]
 
-            tool = tools[0]
-            with Image.open(path) as img:
-                text = tool.image_to_string(
-                    img, builder=pyocr.builders.TextBuilder())
+    def run_extract_nome(cursor):
+        path = get_image(conn, ultima_imagem_id)
 
-        nome = find_nome(text)
-
-        if len(nome) > 1:
-            choose_window = choose_layout(nome)
-
-            while True:
-                choose_event, choose_values = choose_window.read()
-
-                if choose_event == sg.WIN_CLOSED or choose_event == "OK":
-                    break
-
-            choose_window.close()
-
-            if choose_values["-NOME-"]:
-                nome_medicamento = choose_values["-NOME-"][0]
+        if path:
+            if attempt == 1:
+                image = cv2.imread(path)
+                text = ocr_with_easyocr(image)
+            elif attempt == 2:
+                image = Image.open(path)
+                text = pytesseract.image_to_string(image)
             else:
-                sg.popup_error("Selecione um medicamento.")
+                tools = pyocr.get_available_tools()
+                if len(tools) == 0:
+                    sg.popup_error(
+                        "Nenhum motor OCR disponível. Certifique-se de ter o Tesseract-OCR instalado.")
+                    return None
+
+                tool = tools[0]
+                with Image.open(path) as img:
+                    text = tool.image_to_string(
+                        img, builder=pyocr.builders.TextBuilder())
+
+            nome = find_nome(text, medicine_keywords, timeout=5)
+
+            if nome is not None and isinstance(nome, list) and len(nome) > 0:
+                if len(nome) > 1:
+                    choose_window = choose_layout(nome)
+
+                    nome_medicamento = None
+
+                    while True:
+                        choose_event, choose_values = choose_window.read()
+
+                        if choose_event == sg.WIN_CLOSED or choose_event == "OK":
+                            break
+
+                    choose_window.close()
+
+                    if choose_values["-NOME-"]:
+                        nome_medicamento = choose_values["-NOME-"][0]
+                    else:
+                        sg.popup_error("Selecione um medicamento.")
+                        return
+
+                elif len(nome) == 1:
+                    nome_medicamento = nome[0]
+
+                else:
+                    sg.popup_error("Nenhum medicamento encontrado. (01)")
+                    return
+
+                add_product_window["nome"].update(
+                    nome_medicamento if nome_medicamento else "")
+
+            else:
+                print("Erro 01")
                 return
 
-        elif len(nome) == 1:
-            nome_medicamento = nome[0]
-
         else:
-            sg.popup_error("Nenhum medicamento encontrado.")
-            return
+            sg.popup("", "")
+            return print("Erro (2)")
 
-        add_product_window["nome"].update(
-            nome_medicamento if nome_medicamento else "")
+    def interrupcao_temporizada(tempo):
+        for _ in range(tempo * 10):
+            if stop_flag[0]:
+                return
+            for _ in range(3000000):
+                pass
+        stop_flag[0] = True
 
-    else:
-        sg.popup("Nome do medicamento não encontrado.",
-                 "Informação não encontrada.")
-        return None
+    thread = threading.Thread(target=interrupcao_temporizada, args=(timeout,))
+    thread.start()
+
+    while not stop_flag[0]:
+        run_extract_nome(conn.cursor())
+        if stop_flag[0]:
+            print("Erro no extract_nome: tempo limite atingido")
+            break
+
+    thread.join()
 
 # Função para extrair a unidade e medida da imagem
 
 
-def extract_unidade_and_medida(add_product_window, conn, choose_window, attempt=1):
+def extract_unidade_and_medida(add_product_window, conn, choose_window, attempt=1, timeout=5):
     global ultima_imagem_id
-    path = get_image(conn, ultima_imagem_id)
-    if path:
-        if attempt == 1:
-            image = cv2.imread(path)
-            text = ocr_with_easyocr(image)
-        elif attempt == 2:
-            image = Image.open(path)
-            text = pytesseract.image_to_string(image)
+    stop_flag = [False]
+    # Variável local para rastrear a execução
+    find_quantidade_and_medida_called = False
+
+    def run_extract_unidade_and_medida(cursor, find_quantidade_and_medida_called):
+        path = get_image(conn, ultima_imagem_id)
+
+        if path:
+            if attempt == 1:
+                image = cv2.imread(path)
+                text = ocr_with_easyocr(image)
+            elif attempt == 2:
+                image = Image.open(path)
+                text = pytesseract.image_to_string(image)
+            else:
+                tools = pyocr.get_available_tools()
+                if len(tools) == 0:
+                    sg.popup_error(
+                        "Nenhum motor OCR disponível. Certifique-se de ter o Tesseract-OCR instalado.")
+                    return print("Erro (3)")
+
+                tool = tools[0]
+                with Image.open(path) as img:
+                    text = tool.image_to_string(
+                        img, builder=pyocr.builders.TextBuilder())
+
+            if not find_quantidade_and_medida_called:
+                quantidade, medida = find_quantidade_and_medida(
+                    text, timeout=5)
+                find_quantidade_and_medida_called = True
+            else:
+                quantidade, medida = "", ""
+
+            if quantidade == "" or medida == "":
+                if attempt == 1:
+                    return extract_unidade_and_medida(add_product_window, conn, choose_window, attempt=2)
+                elif attempt == 2:
+                    return extract_unidade_and_medida(add_product_window, conn, choose_window, attempt=3)
+                else:
+                    sg.popup(
+                        "Não consegui extrair as informações desejadas. \n\n Por favor, insira as informações manualmente.")
+                    return quantidade, medida
+            else:
+                add_product_window["quantidade"].update(
+                    quantidade if quantidade else "")
+                add_product_window["medida"].update(medida if medida else "")
         else:
-            tools = pyocr.get_available_tools()
-            if len(tools) == 0:
-                sg.popup_error(
-                    "Nenhum motor OCR disponível. Certifique-se de ter o Tesseract-OCR instalado.")
-                return None
+            sg.popup("", "")
+            return print("Erro (4)")
 
-            tool = tools[0]
-            with Image.open(path) as img:
-                text = tool.image_to_string(
-                    img, builder=pyocr.builders.TextBuilder())
+    def interrupcao_temporizada(tempo):
+        for _ in range(tempo * 10):
+            if stop_flag[0]:
+                return
+            for _ in range(2000000):
+                pass
+        stop_flag[0] = True
 
-        # Calling the function to extract quantidade and medida
-        quantidade, medida = find_quantidade_and_medida(text)
+    thread = threading.Thread(target=interrupcao_temporizada, args=(timeout,))
+    thread.start()
 
-        if quantidade == "Quantidade não encontrada." or medida == "Medida não encontrada.":
-            # Faça a mesma função rodar novamente para pegar os dados corretos, mas agora com a segunda attempt
-            return extract_unidade_and_medida(add_product_window, conn, choose_window, attempt=2)
-        else:
-            add_product_window["quantidade"].update(
-                quantidade if quantidade else "")
-            add_product_window["medida"].update(medida if medida else "")
-    else:
-        sg.popup("Nome do medicamento não encontrado.",
-                 "Informação não encontrada.")
-        return None
+    while not stop_flag[0]:
+        run_extract_unidade_and_medida(
+            conn.cursor(), find_quantidade_and_medida_called)
+        if stop_flag[0]:
+            print("Erro no extract_unidade_and_medida: tempo limite atingido")
+            break
+
+    thread.join()
 
 # Função para reconhecer o nome do medicamento
 
 
-def find_nome(text):
+def find_nome(text, medicine_keywords, timeout=5):
+    stop_flag = [False]
+
+    def run_find_nome():
+        resultados = []
+
+        for palavra_chave in medicine_keywords:
+            palavras = re.split(r'[\s\n]+', palavra_chave.lower())
+            encontradas = all(p.lower() in text.lower() for p in palavras)
+            if encontradas:
+                resultados.append(palavra_chave.capitalize())
+
+        return resultados if resultados else [""]
+
+    def interrupcao_temporizada(tempo):
+        for _ in range(tempo * 10):
+            if stop_flag[0]:
+                return
+            for _ in range(5000000):
+                pass
+        stop_flag[0] = True
+
+    thread = threading.Thread(target=interrupcao_temporizada, args=(timeout,))
+    thread.start()
+
     resultados = []
+    while not stop_flag[0]:
+        resultados = run_find_nome()
+        if resultados:
+            stop_flag[0] = True
 
-    for palavra_chave in medicine_keywords:
-        palavras = re.split(r'[\s\n]+', palavra_chave.lower())
-        encontradas = all(p.lower() in text.lower() for p in palavras)
-        if encontradas:
-            resultados.append(palavra_chave.capitalize())
+    thread.join()
 
-    return resultados if resultados else ["Medicamento não encontrado."]
+    if stop_flag[0] and not resultados:
+        print("Erro no find_nome: tempo limite atingido")
+        return ["Erro no find_nome: tempo limite atingido"]
 
+    return resultados
 # Função para reconhecer a quantidade e medida e após isso separá-las
 
 
-def find_quantidade_and_medida(text):
-    # Expressão regular para encontrar a quantidade e medida
-    padrao = r"(\d+\s*(" + "|".join(medida_keywords) + r")\b)"
-    resultado = re.findall(padrao, text, flags=re.IGNORECASE)
-    if resultado:
-        # Extrair a primeira ocorrência de quantidade e medida
-        quantidade_medida = resultado[0][0]
-        # Dividir a quantidade da medida
-        partes = re.split(r"\s*(" + "|".join(medida_keywords) +
-                          r")\b", quantidade_medida, flags=re.IGNORECASE)
-        quantidade = partes[0].strip() if len(
-            partes) > 0 else "Quantidade não encontrada"
-        medida = partes[1].strip().lower() if len(
-            partes) > 1 else "Medida não encontrada"
-        return quantidade, medida
-    else:
-        return "Quantidade não encontrada.", "Medida não encontrada."
+def find_quantidade_and_medida(text, timeout=5):
+    stop_flag = [False]
 
+    def run_find_quantidade_and_medida():
+        # Expressão regular para encontrar a quantidade e medida
+        padrao = r"(\d+\s*(" + "|".join(medida_keywords) + r")\b)"
+        resultado = re.findall(padrao, text, flags=re.IGNORECASE)
+        if resultado:
+            # Extrair a primeira ocorrência de quantidade e medida
+            quantidade_medida = resultado[0][0]
+            # Dividir a quantidade da medida
+            partes = re.split(r"\s*(" + "|".join(medida_keywords) +
+                              r")\b", quantidade_medida, flags=re.IGNORECASE)
+            quantidade = partes[0].strip() if len(partes) > 0 else ""
+            medida = partes[1].strip().lower() if len(partes) > 1 else ""
+            return quantidade, medida
+        else:
+            return "", ""
+
+    def interrupcao_temporizada(tempo):
+        for _ in range(tempo * 10):
+            if stop_flag[0]:
+                return
+            for _ in range(2000000):
+                pass
+        stop_flag[0] = True
+
+    # Cria uma thread que executará a função interrupcao_temporizada
+    thread = threading.Thread(target=interrupcao_temporizada, args=(timeout,))
+    thread.start()
+
+    while not stop_flag[0]:
+        quantidade, medida = run_find_quantidade_and_medida()
+        if quantidade != "" and medida != "":
+            break
+        if stop_flag[0]:
+            print("Erro no find_quantidade_and_medida: tempo limite atingido")
+            return "", ""
+
+    thread.join()
+    return quantidade, medida
 
 ####### FUNÇÕES DE LAYOUT PARA INTERFCES GRÁFICAS (GUI) #######
 
 # Janela de configurações
+
+
 def config_layout():
     return [
-        [sg.Text("Porta COM:"), sg.Combo(["COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9"], key="porta_COM", size=(10, 1)),
-         sg.Text("Taxa Band:"), sg.Combo(['300', '1200', '2400', '4800', '9600', '19200', '38400', '57600', '74880',
-                                          '115200', '230400', '250000', '500000'], key="taxa_band", size=(10, 1))],
+        [sg.Combo(sg.theme_list(), default_value=sg.theme(), size=(15, 22), enable_events=True, readonly=True, key='-COR_DA_JANELA-'),
+         sg.Combo(list(range(8, 25)), default_value=current_font_size, s=(5, 22), enable_events=True, readonly=True, key='-FONT-SIZE-')],
+        [sg.HSep()],
+        [sg.Text("Porta COM:"), sg.Combo(get_available_com_ports(), key="porta_COM", size=(10, 1)),
+         sg.Text("Taxa Band:"), sg.Combo(get_baud_rates(), key="taxa_band", size=(10, 1))],
         [sg.Button("OK")]
     ]
-
 # Janela principal
 
 
 def main_layout():
     return [
         [sg.Button("Adicionar Produto"), sg.Button(
-            "Exibir Produtos Existentes")], [sg.Button('Calibrar')],
+            "Exibir Produtos Existentes")], [sg.Button('Calibrar'), sg.Button("Cancelar")],
         [sg.HSeparator("Separador")],
         [sg.Text("Localizar por Nome:"), sg.InputText(
             key="filtro_nome"), sg.Button("Localizar Produto")],
@@ -661,12 +954,15 @@ def add_layout():
         [sg.Text("Validade:"), sg.InputText(
             key="validade", size=(40, 1), pad=(53, None))],
         [sg.Text("Quantidade:"), sg.InputText(key="quantidade", size=(20, 1), pad=(25, None)),
-         sg.Combo(['unid', 'mmg', 'mg', 'g', 'ml'], tooltip="choose something", key="medida", size=(7, 1))],
+         sg.Combo(get_available_medida_keywords(medida_keywords), key="medida", size=(7, 1))],
         [sg.Button("Selecionar Imagem", key="selecionar_imagem"),
-         sg.Button("Limpar Imagem", key="limpar_imagem")],
-        [sg.Image(key='-IMAGE-', size=(300, 300), pad=(0, 0),)],
+         sg.Button("Limpar Imagem", key="limpar_imagem"),
+         sg.Button("Limpar Tudo", key="limpar_tudo")],
+        [sg.Image(key='-IMAGE-', size=(0, 0), pad=(0, 0),)],
         [sg.Text("Nota Fiscal:"), sg.Input(key="-NOTA_FISCAL_PDF-"),
-         sg.FileBrowse(key="-BROWSE_PDF-", file_types=(("PDF Files", "*.pdf"),))],
+         sg.Button("Selecionar PDF", key="selecionar_pdf")],
+        [sg.Text("Pré-visualização:"), sg.Image(key='-PDF_PREVIEW-', size=(0, 0), pad=(0, 0), enable_events=True),
+         sg.StatusBar("← Selecione para melhor visualização!", text_color='black', background_color="yellow", visible=False, key="text_pdf_info")],
         [sg.Button("Adicionar")],
         [sg.Text("", visible=False, key="path")]
     ]
@@ -691,8 +987,8 @@ def info_layout(has_selected_image=False, path_imagem=None):
             eixo_z, key="eixo_z", size=(40, 1), pad=(53, None))],
         [sg.Image(key='-PRODUCT_IMAGE-', size=(300, 300), pad=(0, 0),
                   expand_y=False, expand_x=False, visible=False)],
-        [sg.Button("Guardar Produto"), sg.Button(
-            "Retirar Produto"), sg.Button("Limpar Produto")],
+        [sg.Button("Guardar Produto"), sg.Button("Retirar Produto"),
+         sg.Button("Limpar Produto")],
         [sg.Button("Visualizar a Nota Fiscal")]
     ]
 
@@ -718,7 +1014,7 @@ def loading_layout():
     posicao_y = 300
 
     layout = [
-        [sg.Text("Estou analisando a imagem fornecida\n\Isso pode demorar um pouco...",
+        [sg.Text("Estou analisando a imagem fornecida \n\nIsso pode demorar um pouco...",
                  justification='center')]
     ]
     loading_window = sg.Window("Loading", layout, finalize=True, size=(
@@ -749,7 +1045,7 @@ try:
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS imagens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL
+            path TEXT
         )
     ''')
         cursor.execute('''
@@ -763,7 +1059,7 @@ try:
             eixo_z TEXT NOT NULL,
             quantidade INT NOT NULL,
             medida TEXT NOT NULL,
-            path TEXT NOT NULL,
+            path TEXT,
             validade TEXT NOT NULL,
             data_criada DATETIME,
             data_guardada DATETIME,
@@ -790,61 +1086,72 @@ while True:
     if event == sg.WINDOW_CLOSED:
         break
 
+    elif event == '-COR_DA_JANELA-':
+        if values['-COR_DA_JANELA-'] != sg.theme():
+            sg.theme(values['-COR_DA_JANELA-'])
+            config_window.close()
+            config_window = sg.Window(
+                "Configurações", config_layout(), finalize=True)
+
+    elif event == '-FONT-SIZE-':
+        current_font_size = values['-FONT-SIZE-']
+        sg.set_options(font=('Arial', current_font_size))
+        config_window.close()
+        config_window = sg.Window(
+            "Configurações", config_layout(), finalize=True)
+
     elif event == 'OK':
         try:
             ser = connect_to_arduino(values["porta_COM"], values["taxa_band"])
             if ser:
-                config_window.close()
 
                 # Inicia a thread para leitura serial
-                try:
-                    serial_thread_instance = threading.Thread(
-                        target=serial_thread, args=(ser,), daemon=True)
-                    serial_thread_instance.start()
-                except Exception as e:
-                    print("Erro ao iniciar as threads: " + str(e))
+                start_serial_thread(ser)
 
+                config_window.close()
                 # Janela principal é chamada após a verificação das configurações
-                main_window = sg.Window("Janela Principal", main_layout())
+                main_window = sg.Window(
+                    "Janela Principal", main_layout(), finalize=True)
 
                 while True:
                     event, values = main_window.read()
 
                     if event == sg.WINDOW_CLOSED:
+                        stop_serial_thread()
                         break
 
                     elif event == 'Voltar':
-                        main_window.close()
-                        clear_serial_input(ser)
-                        if ser:
-                            ser.close()  # Fecha a conexão serial
-                        # Reabre a janela de configurações
-                        else:
-                            config_window = sg.Window(
-                                "Configurações", config_layout(), finalize=True)
+                        stop_serial_thread()  # Encerra a thread antes de fechar a porta serial
 
-                            # Chama a função para redefinir os valores
-                            reset_config_values(config_window)
+                        if ser and ser.is_open:
+                            clear_serial_input(ser)
+                            ser.close()
+                        main_window.close()  # Fecha a janela principal
+                        config_window = sg.Window(
+                            "Configurações", config_layout(), finalize=True)
 
-                            while True:
-                                event, values = config_window.read()
+                        reset_config_values(config_window)
 
-                                if event == sg.WINDOW_CLOSED:
+                        while True:
+                            event, values = config_window.read()
+
+                            if event == sg.WINDOW_CLOSED:
+                                stop_serial_thread()
+                                # Encerra o programa se a janela de configuração for fechada
+                                sys.exit(0)
+
+                            elif event == 'OK':
+                                ser = connect_to_arduino(
+                                    values["porta_COM"], values["taxa_band"])
+
+                                if ser:
+                                    # Reinicia a thread serial
+                                    start_serial_thread(ser)
                                     break
 
-                                elif event == 'OK':
-                                    ser = connect_to_arduino(
-                                        values["porta_COM"], values["taxa_band"])
-                                    if ser:
-                                        break
-
-                            config_window.close()
-                            main_window.close()
-                            break
-
-                        # Reabre a janela principal
+                        config_window.close()
                         main_window = sg.Window(
-                            "Janela Principal", main_layout())
+                            "Janela Principal", main_layout(), finalize=True)
 
                     elif event == 'Adicionar Produto':
                         main_window.hide()
@@ -857,6 +1164,9 @@ while True:
 
                             if add_event == sg.WINDOW_CLOSED:
                                 main_window.un_hide()
+                                filepath = None
+                                add_product_window["path"].update(filepath)
+                                add_product_window['-IMAGE-'].update(data=None)
                                 break
 
                             elif add_event == 'Adicionar':
@@ -879,6 +1189,9 @@ while True:
                                 elif not nota_fiscal_pdf_path:
                                     sg.popup('Campo Nota Fiscal obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
                                         'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
+                                elif not nota_fiscal_pdf_path.lower().endswith('.pdf'):
+                                    sg.popup('Campo Nota Fiscal deve ser preenchido por arquivo PDF obrigatóriamente!', title='Campo Obrigatório', non_blocking=True, font=(
+                                        'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                                 elif not eixo_x.isdigit():
                                     sg.popup('Campo Eixo X é obrigatório!\n\nPreencha com números inteiros.', title='Campo Obrigatório',
                                              non_blocking=True, font=('Helvetica', 10), keep_on_top=True, auto_close_duration=3)
@@ -895,43 +1208,59 @@ while True:
                                     sg.popup('Campo Validade obrigatório!', title='Campo Obrigatório', non_blocking=True, font=(
                                         'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                                 else:
-                                    if filepath and os.path.exists(filepath):
+                                    if filepath:
                                         # Check if the file is a valid image file
-                                        valid_image_extensions = {
-                                            ".png", ".jpg", ".jpeg"}
-                                        _, file_extension = os.path.splitext(
-                                            filepath)
-                                        if file_extension.lower() in valid_image_extensions:
-                                            # Converting the image to bytes
-                                            with open(filepath, 'rb') as image_file:
-                                                image_data = image_file.read()
+                                        if os.path.exists(filepath):
+                                            valid_image_extensions = {
+                                                ".png", ".jpg", ".jpeg"}
+                                            _, file_extension = os.path.splitext(
+                                                filepath)
+                                            if file_extension.lower() in valid_image_extensions:
+                                                # Converting the image to bytes
+                                                with open(filepath, 'rb') as image_file:
+                                                    image_data = image_file.read()
 
-                                            # Resizing the image to 300x300 pixels
-                                            pil_image = Image.open(
-                                                BytesIO(image_data))
-                                            pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(
-                                                Image, 'ANTIALIAS') else Image.LANCZOS)
+                                                # Resizing the image to 300x300 pixels
+                                                pil_image = Image.open(
+                                                    BytesIO(image_data))
+                                                pil_image = pil_image.resize((300, 300), Image.ANTIALIAS if hasattr(
+                                                    Image, 'ANTIALIAS') else Image.LANCZOS)
 
-                                            # Converting the image to the format supported by PySimpleGUI
-                                            tk_image = ImageTk.PhotoImage(
-                                                pil_image)
+                                                # Converting the image to the format supported by PySimpleGUI
+                                                tk_image = ImageTk.PhotoImage(
+                                                    pil_image)
 
-                                            # Updating the image in the layout
-                                            add_product_window['-IMAGE-'].update(
-                                                data=tk_image)
+                                                # Updating the image in the layout
+                                                add_product_window['-IMAGE-'].update(
+                                                    data=tk_image)
 
-                                            # If everything is fine, add the product
-                                            adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z,
-                                                              quantidade, medida, validade, filepath)
-
+                                                # If everything is fine, add the product with the image
+                                                adicionar_produto(
+                                                    nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida, validade, filepath)
+                                                sg.popup(f"O produto {nome} foi adicionado.", title='Produto adicionado', non_blocking=True, font=(
+                                                    'Helvetica', 10), keep_on_top=True)
+                                                limpar_inputs(
+                                                    add_product_window, filepath)
+                                            else:
+                                                sg.popup('Formato de imagem inválido!', title='Erro de Imagem', non_blocking=True, font=(
+                                                    'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
+                                        else:
+                                            sg.popup('Arquivo de imagem não encontrado!', title='Erro de Imagem', non_blocking=True, font=(
+                                                'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
                                     else:
                                         # If no image is selected, add the product without an image
-                                        adicionar_produto(nome, registro, eixo_x, nota_fiscal_pdf_path,
-                                                          eixo_z, quantidade, medida, validade, None)
+                                        adicionar_produto(
+                                            nome, registro, eixo_x, nota_fiscal_pdf_path, eixo_z, quantidade, medida, validade, None)
+                                        sg.popup('Produto adicionado sem imagem.', title='Produto Adicionado', non_blocking=True, font=(
+                                            'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
+                                        limpar_inputs(
+                                            add_product_window, filepath)
 
                             elif add_event == 'selecionar_imagem':
                                 filepath = sg.popup_get_file("Selecionar Imagem", file_types=(
                                     ("Imagens", "*.png;*.jpg;*.jpeg"),))
+                                if not filepath:
+                                    continue
                                 add_product_window["path"].update(filepath)
                                 if filepath and os.path.exists(filepath):
                                     insert_image(conn, filepath)
@@ -943,9 +1272,9 @@ while True:
                                             choose_window = choose_layout([])
 
                                             extract_nome(add_product_window,
-                                                         conn, choose_window)
+                                                         conn, choose_window, timeout=5)
                                             extract_unidade_and_medida(
-                                                add_product_window, conn, choose_window)
+                                                add_product_window, conn, choose_window, timeout=5)
 
                                             loading_window.close()
 
@@ -989,16 +1318,81 @@ while True:
                                 add_product_window["path"].update(filepath)
                                 add_product_window['-IMAGE-'].update(data=None)
 
+                            elif add_event == 'limpar_tudo':
+                                limpar_inputs(add_product_window, filepath)
+
                             elif add_event == 'selecionar_pdf':
                                 selected_nota_fiscal_pdf_path = sg.popup_get_file(
                                     "Selecionar PDF", file_types=(("Arquivos PDF", "*.pdf"),))
-                                add_product_window["nota_fiscal_pdf_path"].update(
+                                add_product_window["-NOTA_FISCAL_PDF-"].update(
                                     selected_nota_fiscal_pdf_path)
 
+                                if selected_nota_fiscal_pdf_path:
+                                    pdf_document = None
+                                    try:
+                                        pdf_document = fitz.open(
+                                            selected_nota_fiscal_pdf_path)
+                                        page = pdf_document[0]
+                                        pix = page.get_pixmap()
+                                        image_bytes = pix.tobytes()
+
+                                        # Redimensiona a imagem para caber dentro dos limites desejados
+                                        pil_image = Image.open(
+                                            BytesIO(image_bytes))
+                                        pil_image = pil_image.resize((50, 50), Image.ANTIALIAS if hasattr(
+                                            Image, 'ANTIALIAS') else Image.LANCZOS)
+
+                                        # Converte a imagem redimensionada de volta para o formato bytes
+                                        image_bytes_resized = BytesIO()
+                                        pil_image.save(
+                                            image_bytes_resized, format='PNG')
+                                        tk_pdf_image = ImageTk.PhotoImage(
+                                            data=image_bytes_resized.getvalue())
+                                        add_product_window['-PDF_PREVIEW-'].update(
+                                            data=tk_pdf_image)
+                                        add_product_window['text_pdf_info'].update(
+                                            visible=True)
+
+                                    except Exception as e:
+                                        # Em caso de erro, mostra uma mensagem ao usuário
+                                        print(f"Erro ao abrir PDF: {str(e)}")
+                                    finally:
+                                        if pdf_document is not None:
+                                            pdf_document.close()
+
+                            elif add_event == '-PDF_PREVIEW-':
+                                # Se a imagem do PDF for clicada, abre a janela separada com mais funcionalidades para o PDF
+                                selected_nota_fiscal_pdf_path = add_values["-NOTA_FISCAL_PDF-"]
+                                if selected_nota_fiscal_pdf_path:
+                                    try:
+                                        view_selected_pdf_window(
+                                            selected_nota_fiscal_pdf_path)
+
+                                    except Exception as e:
+                                        # Em caso de erro, mostra uma mensagem ao usuário
+                                        sg.popup(f"Erro ao abrir PDF: {str(e)}", title='Erro', non_blocking=True, font=(
+                                            'Helvetica', 10), keep_on_top=True, auto_close_duration=3)
+
+                    elif event == 'Cancelar':
+                        try:
+                            cancelar = f'M112' + '\n'
+                            try:
+                                ser.write(cancelar.encode())
+                                time.sleep(0.1)
+                                print(cancelar)
+                                sg.popup("Ação cancelada")
+                            except serial.serialutil.SerialTimeoutException:
+                                print(
+                                    "Timeout ao tentar escrever na porta serial. Tentando novamente...")
+                        except Exception as e:
+                            sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
+                                        non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
+                            print("Erro em Guardar: " + str(e))
+                    
                     elif event == 'Exibir Produtos Existentes':
                         produtos = exibir_produtos_existentes()
                         if produtos:
-                            main_window.hide()
+                            # main_window.hide()
 
                             products_table_window = sg.Window(
                                 "Produtos Existentes", products_table_layout(produtos), finalize=True)
@@ -1027,26 +1421,51 @@ while True:
 
                     elif event == 'Calibrar':
                         try:
-                            calibrar = f"CALIBRAR" + '\n'
-                            ser.write(calibrar.encode())
+                            calibrar = f'G28 Y \n G28 Z \n G28 X' + '\n'
+                            try:
+                                ser.write(calibrar.encode())
+                                time.sleep(0.1)
+                                print(calibrar)
+                                sg.popup('calibrando...')
+                            except serial.serialutil.SerialTimeoutException:
+                                print(
+                                    "Timeout ao tentar escrever na porta serial. Tentando novamente...")
                         except Exception as e:
                             sg.popup_error('Nenhuma porta serial conectada.\n\n Impossível fazer a comunicação.', title='Produtos Não Encontrados',
                                            non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
                             print("Erro em Calibrar: " + str(e))
 
                     elif event == 'Localizar Produto':
-                        filtro_nome = values["filtro_nome"]
-                        if filtro_nome:
-                            produtos = localizar_produto(filtro_nome)
+                        filtro = values.get("filtro_nome", "").strip()  # Usamos apenas um input
+                        if filtro:
+                            produtos = localizar_produto(filtro)
                             if produtos:
                                 if len(produtos) == 1:
                                     selected_product_name = produtos[0][0]
-                                    product_info = get_product_info(
-                                        selected_product_name)
+                                    product_info = get_product_info(selected_product_name)
 
-                                    # Ensure that product_info is not None before using it
                                     if product_info:
                                         products_info_loop()
+
+                                    products_table_window = sg.Window(
+                                        "Produtos Existentes", products_table_layout(produtos), finalize=True
+                                    )
+
+                                    while True:
+                                        table_event, table_values = products_table_window.read()
+
+                                        if table_event == sg.WINDOW_CLOSED:
+                                            main_window.un_hide()
+                                            break
+
+                                        elif table_event == 'table':
+                                            selected_row = table_values["table"]
+                                            if selected_row:
+                                                selected_product_name = produtos[selected_row[0]][0]
+                                                product_info = get_product_info(selected_product_name)
+
+                                                if product_info:
+                                                    products_info_loop()
 
                                 else:
                                     products_table_window = sg.Window(
@@ -1066,10 +1485,8 @@ while True:
                                                 product_info = get_product_info(
                                                     selected_product_name)
 
-                                                # Ensure that product_info is not None before using it
                                                 if product_info:
                                                     products_info_loop()
-
                             else:
                                 sg.popup('Nenhum produto encontrado para o filtro fornecido.', title='Produtos não encontrados',
                                          non_blocking=True, font=('Helvetica', 10), keep_on_top=True)
@@ -1087,6 +1504,12 @@ while True:
                     ser.close()
                 except Exception as e:
                     print("Erro ao fechar a porta serial: " + str(e))
+            else:
+                sg.popup_error(
+                    "Erro ao configurar a porta serial. Certifique-se de que a porta e a taxa de banda estão corretas.")
+                print('Erro critico')
+                # sys.exit()
+                continue
 
         except Exception as e:
             print("Erro ao configurar a porta serial: " + str(e))

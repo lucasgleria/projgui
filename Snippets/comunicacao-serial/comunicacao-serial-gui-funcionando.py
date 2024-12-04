@@ -62,7 +62,7 @@ def main():
     global window  # Adicionando global window
 
     # Defina a porta serial do Arduino
-    arduino_port = 'COM7'  # Altere para a porta correta
+    arduino_port = 'COM12'  # Altere para a porta correta
 
     # Tenta abrir a porta serial
     ser = None
